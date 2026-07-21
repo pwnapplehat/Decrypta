@@ -579,6 +579,35 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        _decryptLog.Clear();
+        DecryptLogText = "";
+        IsBusy = true;
+
+        // "Use installed build" only works when ipadecrypt gets a bundle id (it matches the
+        // installed app by bundle id). If the user pasted an App Store link/id, resolve it to
+        // the bundle id first via Apple's public lookup - otherwise ipadecrypt would fall back
+        // to downloading from the App Store, ignoring the toggle.
+        if (!SourceFromAppStore && !DecryptaEngine.IsLocalIpa(target) &&
+            !Decrypta.Core.AppStore.AppStoreLookup.LooksLikeBundleId(target))
+        {
+            var (appId, country) = Decrypta.Core.AppStore.AppStoreLookup.ParseAppStoreRef(target);
+            if (appId is not null)
+            {
+                Status = $"resolving App Store id {appId}…";
+                var countries = new[] { country, string.IsNullOrWhiteSpace(Storefront) ? null : Storefront.Trim() };
+                var bundleId = await Decrypta.Core.AppStore.AppStoreLookup.LookupBundleIdAsync(appId, countries);
+                if (bundleId is not null)
+                {
+                    AppendDecrypt($"[resolve] App Store id {appId} -> {bundleId} (using installed build)\n");
+                    target = bundleId;
+                }
+                else
+                {
+                    AppendDecrypt($"[resolve] couldn't resolve id {appId} to a bundle id — it will be fetched from the App Store instead. Tip: paste the bundle id directly to use the installed build.\n");
+                }
+            }
+        }
+
         var flags = new List<string>();
         if (Verbose)
         {
@@ -608,9 +637,6 @@ public sealed class MainViewModel : ObservableObject
             ? null
             : DecryptaEngine.DefaultOutputPath(OutputDirectory, target);
 
-        _decryptLog.Clear();
-        DecryptLogText = "";
-        IsBusy = true;
         Status = $"decrypting {target}…";
         try
         {

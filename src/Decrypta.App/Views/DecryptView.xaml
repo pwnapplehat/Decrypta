@@ -35,6 +35,8 @@
                          Checked="OnSourceInstalled"/>
           </StackPanel>
         </Grid>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0"
+                   Text="Use installed build decrypts the copy already on the device (no re-download). A bundle id, App Store link or id all work — links/ids are resolved to the installed app automatically."/>
 
         <WrapPanel Margin="0,14,0,0">
           <CheckBox Content="skip app extensions" IsChecked="{Binding SkipAppex}" Margin="0,0,22,6"/>

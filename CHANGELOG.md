@@ -4,6 +4,16 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-07-21
+
+### Fixed
+- **"Use installed build" now works with an App Store link or numeric id**, not just a bundle
+  id. ipadecrypt only matches an installed app by bundle id, so pasting a link/id previously
+  fell through to an App Store download. Decrypta now resolves the id → bundle id first via
+  Apple's public lookup (no sign-in), so the installed copy is decrypted in place as intended.
+  Output files are also named by bundle id in this case. Falls back to the App Store path with
+  a clear note if the id can't be resolved.
+
 ## [1.0.0] - 2026-07-21
 
 Initial release.
@@ -29,4 +39,5 @@ Initial release.
 - Headless `decrypta-cli` (`devices`, `doctor`, `decrypt`) that reuses the app's sign-in.
 - Bundled native `ipatool` and `ipadecrypt`; self-contained installer (no .NET required).
 
+[1.0.1]: https://github.com/pwnapplehat/Decrypta/releases/tag/v1.0.1
 [1.0.0]: https://github.com/pwnapplehat/Decrypta/releases/tag/v1.0.0

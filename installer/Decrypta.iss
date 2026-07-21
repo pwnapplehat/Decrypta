@@ -6,7 +6,7 @@
 ;   ISCC installer\Decrypta.iss
 
 #define AppName "Decrypta"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.1"
 #define AppPublisher "Decrypta Contributors"
 #define AppExe "Decrypta.exe"
 

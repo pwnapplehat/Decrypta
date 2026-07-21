@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
+using Decrypta.Core.AppStore;
 using Decrypta.Core.Tools;
 using Decrypta.Core.Tunnel;
 using Xunit;
@@ -97,6 +98,39 @@ public class IpadecryptConfigTests
         {
             Directory.Delete(root, true);
         }
+    }
+}
+
+public class AppStoreLookupTests
+{
+    [Theory]
+    [InlineData("https://apps.apple.com/ee/app/vinted-shop-sell-pre-loved/id632064380", "632064380", "ee")]
+    [InlineData("https://apps.apple.com/us/app/instagram/id389801252", "389801252", "us")]
+    [InlineData("632064380", "632064380", null)]
+    public void ParseAppStoreRef_extracts_id_and_country(string target, string expectedId, string? expectedCountry)
+    {
+        var (appId, country) = AppStoreLookup.ParseAppStoreRef(target);
+        Assert.Equal(expectedId, appId);
+        Assert.Equal(expectedCountry, country);
+    }
+
+    [Fact]
+    public void ParseAppStoreRef_returns_none_for_a_bundle_id()
+    {
+        var (appId, country) = AppStoreLookup.ParseAppStoreRef("lt.manodrabuziai.fr");
+        Assert.Null(appId);
+        Assert.Null(country);
+    }
+
+    [Theory]
+    [InlineData("lt.manodrabuziai.fr", true)]
+    [InlineData("com.burbn.instagram", true)]
+    [InlineData("632064380", false)]                                    // numeric id
+    [InlineData("https://apps.apple.com/us/app/x/id1", false)]          // url
+    [InlineData("C:/some/app.ipa", false)]                             // local ipa
+    public void LooksLikeBundleId_classifies_targets(string target, bool expected)
+    {
+        Assert.Equal(expected, AppStoreLookup.LooksLikeBundleId(target));
     }
 }
 
