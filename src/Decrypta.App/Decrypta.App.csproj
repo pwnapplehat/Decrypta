@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Decrypta.App</RootNamespace>
+    <AssemblyName>Decrypta</AssemblyName>
+    <ApplicationIcon Condition="Exists('..\..\assets\icon.ico')">..\..\assets\icon.ico</ApplicationIcon>
+    <Description>Decrypta — download App Store apps and decrypt them into sideload-ready IPAs, on Windows.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Decrypta.Core\Decrypta.Core.csproj" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('..\..\assets\icon.png')">
+    <Resource Include="..\..\assets\icon.png" Link="Assets\icon.png" />
+  </ItemGroup>
+
+  <!-- Bundle the native tools next to the app so it is self-contained. -->
+  <ItemGroup>
+    <None Include="..\..\tools\ipatool.exe" Link="tools\ipatool.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tools\ipadecrypt.exe" Link="tools\ipadecrypt.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

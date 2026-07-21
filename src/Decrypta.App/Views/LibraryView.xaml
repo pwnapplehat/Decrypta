@@ -1,0 +1,71 @@
+<UserControl x:Class="Decrypta.App.Views.LibraryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Grid Margin="28,20,28,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Library" Style="{StaticResource Text.Title}"/>
+      <TextBlock Style="{StaticResource Text.Subtitle}" Margin="0,6,0,0"
+                 Text="Decrypted IPAs you have produced. Install them with your favourite sideloading tool (TrollStore, Sideloadly, …)."/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,0">
+      <ui:Button Content="Refresh" Command="{Binding RefreshLibraryCommand}"/>
+      <ui:Button Content="Open folder" Appearance="Transparent" Margin="8,0,0,0"
+                 Command="{Binding OpenOutputFolderCommand}"/>
+      <TextBlock Text="{Binding OutputDirectory}" Style="{StaticResource Text.Caption}"
+                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+    </StackPanel>
+
+    <ui:Card Grid.Row="2" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="8">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <ItemsControl ItemsSource="{Binding OutputFiles}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{StaticResource Brush.Inset}" CornerRadius="8" Padding="14,11" Margin="2,4">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="&#xE8A5;" FontFamily="{StaticResource Font.Icons}"
+                               FontSize="18" Foreground="{StaticResource Brush.Accent}"
+                               VerticalAlignment="Center" Margin="2,0,12,0"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="2" Text="{Binding SizePretty}" Style="{StaticResource Text.Caption}"
+                               VerticalAlignment="Center" Margin="10,0,14,0"/>
+                    <ui:Button Grid.Column="3" Content="Reveal" Appearance="Transparent"
+                               Click="OnReveal" Tag="{Binding FullPath}"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="No decrypted IPAs yet — decrypt one from the Decrypt tab." Margin="12,16">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Caption}">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding OutputFiles.Count}" Value="0">
+                    <Setter Property="Visibility" Value="Visible"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </StackPanel>
+      </ScrollViewer>
+    </ui:Card>
+  </Grid>
+</UserControl>

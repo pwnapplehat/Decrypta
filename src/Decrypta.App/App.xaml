@@ -1,0 +1,23 @@
+<Application x:Class="Decrypta.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:local="clr-namespace:Decrypta.App"
+             ShutdownMode="OnMainWindowClose">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!-- WPF-UI provides accessible control plumbing (window caption buttons, ToggleSwitch,
+             SymbolIcon, TextBox/PasswordBox); Decrypta's own design system paints everything. -->
+        <ui:ThemesDictionary Theme="Dark"/>
+        <ui:ControlsDictionary/>
+        <ResourceDictionary Source="Theme.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+
+      <local:BoolToVisibilityConverter x:Key="BoolToVis"/>
+      <local:BoolToVisibilityConverter x:Key="BoolToVisInverted" Invert="True"/>
+      <local:CheckStatusToBrushConverter x:Key="CheckBrush"/>
+      <local:CheckStatusToLabelConverter x:Key="CheckLabel"/>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

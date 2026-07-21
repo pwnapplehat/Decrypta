@@ -1,0 +1,81 @@
+<UserControl x:Class="Decrypta.App.Views.DecryptView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Grid Margin="28,20,28,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Decrypt an app" Style="{StaticResource Text.Title}"/>
+      <TextBlock Style="{StaticResource Text.Subtitle}" Margin="0,6,0,0"
+                 Text="Enter a bundle id, App Store id, App Store URL, or a local .ipa. Decrypta downloads it and decrypts it on your connected device into a sideload-ready IPA."/>
+    </StackPanel>
+
+    <ui:Card Grid.Row="1" Margin="0,18,0,0">
+      <StackPanel>
+        <TextBlock Text="App" Style="{StaticResource Text.FieldLabel}"/>
+        <ui:TextBox PlaceholderText="com.burbn.instagram   ·   389801252   ·   https://apps.apple.com/…/id389801252"
+                    Text="{Binding DecryptTarget, UpdateSourceTrigger=PropertyChanged}" FontSize="13"/>
+
+        <Grid Margin="0,16,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="Source" Style="{StaticResource Text.FieldLabel}" Margin="0,0,14,0"
+                     VerticalAlignment="Center"/>
+          <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <RadioButton x:Name="SourceAppStore" GroupName="Src" Content="From App Store"
+                         IsChecked="True" Checked="OnSourceAppStore" Margin="0,0,18,0"/>
+            <RadioButton x:Name="SourceInstalled" GroupName="Src" Content="Use installed build"
+                         Checked="OnSourceInstalled"/>
+          </StackPanel>
+        </Grid>
+
+        <WrapPanel Margin="0,14,0,0">
+          <CheckBox Content="skip app extensions" IsChecked="{Binding SkipAppex}" Margin="0,0,22,6"/>
+          <CheckBox Content="patch device type" IsChecked="{Binding PatchDeviceType}" Margin="0,0,22,6"/>
+          <CheckBox Content="verbose log" IsChecked="{Binding Verbose}" Margin="0,0,22,6"/>
+        </WrapPanel>
+
+        <Grid Margin="0,8,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="190"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="150"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="external version id" Style="{StaticResource Text.FieldLabel}"
+                     Margin="0,0,10,0" VerticalAlignment="Center"/>
+          <ui:TextBox Grid.Column="1" PlaceholderText="optional"
+                      Text="{Binding ExtVersionId, UpdateSourceTrigger=PropertyChanged}"/>
+          <TextBlock Grid.Column="2" Text="storefront" Style="{StaticResource Text.FieldLabel}"
+                     Margin="20,0,10,0" VerticalAlignment="Center"/>
+          <ui:TextBox Grid.Column="3" PlaceholderText="e.g. US"
+                      Text="{Binding Storefront, UpdateSourceTrigger=PropertyChanged}"/>
+        </Grid>
+
+        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+          <ui:Button Content="Decrypt" Appearance="Primary" MinWidth="140"
+                     Command="{Binding DecryptCommand}"/>
+          <ui:Button Content="Cancel" Appearance="Secondary" Margin="10,0,0,0"
+                     Command="{Binding CancelCommand}"/>
+          <ui:Button Content="Open output folder" Appearance="Transparent" Margin="6,0,0,0"
+                     Command="{Binding OpenOutputFolderCommand}"/>
+          <ProgressBar Width="200" Height="4" Margin="18,0,0,0" VerticalAlignment="Center"
+                       IsIndeterminate="{Binding ProgressActive}"
+                       Visibility="{Binding ProgressActive, Converter={StaticResource BoolToVis}}"/>
+        </StackPanel>
+      </StackPanel>
+    </ui:Card>
+
+    <ui:Card Grid.Row="2" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="2">
+      <TextBox x:Name="Log" Style="{StaticResource Console}" Background="Transparent" BorderThickness="0"
+               Text="{Binding DecryptLogText, Mode=OneWay}" TextChanged="OnLogChanged"/>
+    </ui:Card>
+  </Grid>
+</UserControl>

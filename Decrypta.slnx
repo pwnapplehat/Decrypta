@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Decrypta.App/Decrypta.App.csproj" />
+    <Project Path="src/Decrypta.Cli/Decrypta.Cli.csproj" />
+    <Project Path="src/Decrypta.Core/Decrypta.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Decrypta.Core.Tests/Decrypta.Core.Tests.csproj" />
+  </Folder>
+</Solution>

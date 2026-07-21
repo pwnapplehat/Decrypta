@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Decrypta.Cli</RootNamespace>
+    <AssemblyName>decrypta-cli</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Decrypta.Core\Decrypta.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\tools\ipatool.exe" Link="tools\ipatool.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tools\ipadecrypt.exe" Link="tools\ipadecrypt.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

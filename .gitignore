@@ -1,0 +1,29 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+publish/
+publish_cli/
+release/
+
+# Rider/VS
+.vs/
+*.user
+
+# Local scratch
+_shots.ps1
+_spike/
+
+# Decrypta per-user state is under %LOCALAPPDATA%, never in-repo — but ignore any stray copy.
+.state/
+
+# Never commit credentials, decrypted output, or App Store keychains — belt and suspenders.
+**/ipadecrypt/config.json
+cookies/
+out/
+*.ipa
+
+# Other tools
+remove_black_corners.py
+
+# NOTE: tools/ipatool.exe and tools/ipadecrypt.exe ARE committed on purpose: the app bundles
+# them and the build copies them next to the output. They come from the upstream MIT releases.
