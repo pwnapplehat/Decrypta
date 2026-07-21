@@ -11,6 +11,9 @@ release/
 
 # Local scratch
 _shots.ps1
+_nettest.ps1
+_doctor.ps1
+_commitmsg.txt
 _spike/
 
 # Decrypta per-user state is under %LOCALAPPDATA%, never in-repo — but ignore any stray copy.
