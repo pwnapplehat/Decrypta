@@ -25,6 +25,19 @@ public sealed class BoolToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>Green when true (configured/active), muted grey when false.</summary>
+public sealed class BoolToBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush On = new(Color.FromRgb(0x34, 0xD3, 0x99));
+    private static readonly SolidColorBrush Off = new(Color.FromRgb(0x6B, 0x6B, 0x80));
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? On : Off;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Maps a doctor check status to its signature brush.</summary>
 public sealed class CheckStatusToBrushConverter : IValueConverter
 {

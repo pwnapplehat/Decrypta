@@ -46,14 +46,38 @@
 
     <ui:Card Grid.Row="3" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="0">
       <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="14,14,14,10">
-          <ui:Button Content="Sign in &amp; set up device" Appearance="Primary" MinWidth="200"
-                     Command="{Binding SignInCommand}"/>
-          <ui:Button Content="Reset credentials" Appearance="Transparent" Margin="10,0,0,0"
-                     Command="{Binding ResetSignInCommand}"/>
-          <ProgressBar Width="180" Height="4" Margin="18,0,0,0" VerticalAlignment="Center"
-                       IsIndeterminate="{Binding ProgressActive}"
-                       Visibility="{Binding ProgressActive, Converter={StaticResource BoolToVis}}"/>
+        <StackPanel DockPanel.Dock="Top" Margin="14,14,14,10">
+          <!-- Accounts: switch between multiple Apple IDs, add a new one, or sign out/remove. -->
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,10"
+                      Visibility="{Binding HasAccounts, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Accounts" Style="{StaticResource Text.Section}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <ComboBox MinWidth="230" ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}"
+                      VerticalAlignment="Center">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,7,0"
+                             Fill="{Binding IsConfigured, Converter={StaticResource BoolToBrush}}"/>
+                    <TextBlock Text="{Binding Email}" VerticalAlignment="Center"/>
+                    <TextBlock Text="  · active" Foreground="{StaticResource Brush.Accent}" FontSize="11"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <ui:Button Content="Use this" Appearance="Secondary" Margin="8,0,0,0" Command="{Binding SwitchAccountCommand}"/>
+            <ui:Button Content="+ Add account" Appearance="Transparent" Margin="4,0,0,0" Command="{Binding NewAccountCommand}"/>
+            <ui:Button Content="Sign out" Appearance="Transparent" Margin="4,0,0,0" Command="{Binding SignOutCommand}"/>
+            <ui:Button Content="Remove" Appearance="Transparent" Margin="4,0,0,0" Command="{Binding RemoveAccountCommand}"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <ui:Button Content="Sign in &amp; set up device" Appearance="Primary" MinWidth="200"
+                       Command="{Binding SignInCommand}"/>
+            <ProgressBar Width="180" Height="4" Margin="18,0,0,0" VerticalAlignment="Center"
+                         IsIndeterminate="{Binding ProgressActive}"
+                         Visibility="{Binding ProgressActive, Converter={StaticResource BoolToVis}}"/>
+          </StackPanel>
         </StackPanel>
         <TextBox x:Name="Log" Style="{StaticResource Console}" Background="Transparent" BorderThickness="0"
                  Margin="4,0,4,4" Text="{Binding SignInLogText, Mode=OneWay}" TextChanged="OnLogChanged"/>

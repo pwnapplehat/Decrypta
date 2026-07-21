@@ -55,8 +55,8 @@ device) transparently.
 | | |
 |---|---|
 | **Decrypt** | Give it a bundle id, App Store id, App Store URL, or a local `.ipa`. Decrypta authenticates, downloads the encrypted package, decrypts it on your device, patches `cryptid`, repackages it, and drops a sideload-ready IPA in your Library. Choose *From App Store* (latest) or *Use installed build*, pin an older version, skip app extensions, or patch the device family. |
-| **Sign in** | One-time Apple ID sign-in with **2FA handled in-app** — when Apple sends the 6-digit code you type it into the console and press Send. Device SSH login (palera1n's `root` / `alpine` by default) is set up in the same step; the USB/Wi-Fi tunnel is wired automatically, so you never enter an IP. |
-| **Library** | Every decrypted IPA you've produced, newest first, with size and a reveal-in-Explorer action. |
+| **Sign in** | One-time Apple ID sign-in with **2FA handled in-app** — when Apple sends the 6-digit code you type it into the console and press Send. Device SSH login (palera1n's `root` / `alpine` by default) is set up in the same step; the USB/Wi-Fi tunnel is wired automatically, so you never enter an IP. **Multiple Apple IDs** are supported — add/switch/remove accounts (each isolated), with a clear signed-in indicator in the header. |
+| **Library** | Every decrypted IPA you've produced, newest first, with size and reveal-in-Explorer. Pick the **output folder** here or in Settings; the encrypted-download **cache is kept inside that folder** (nothing in system temp) and a one-click **Clean** wipes cached/partial downloads completely — a failed or cancelled decrypt never leaves anything behind. |
 | **Doctor** | One-click end-to-end health check: bundled tools, Apple Mobile Device Service, your connected device, the SSH tunnel (shows the live OpenSSH banner), and sign-in state. |
 | **Auto-update** | Checks GitHub for a newer release on launch (opt-out in Settings). Updates download only when you click Install and are **SHA-256-verified** against the release's `SHA256SUMS.txt` before running. |
 | **CLI** | `decrypta-cli` — `devices` / `doctor` / `decrypt` for scripting; reuses the app's sign-in. |

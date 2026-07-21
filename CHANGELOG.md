@@ -15,8 +15,14 @@ Initial release.
   Mobile Device Service, over **USB or Wi-Fi** (no extra drivers, no WSL).
 - In-process USB/Wi-Fi → SSH tunnel so the on-device decrypt runs with no manual networking.
 - App Store sign-in with 2FA handled in an embedded console; one-time device setup.
+- **Multiple Apple IDs** — add, switch between and remove accounts (each fully isolated in
+  its own credential store), with a clear signed-in indicator in the header.
 - One-click decrypt of a bundle id / App Store id / URL / local `.ipa` into a
   sideload-ready IPA, with live streaming progress.
+- **Contained, cleanable cache** — the encrypted-download cache lives inside your chosen
+  output folder (nothing in system temp); a one-click **Clean** wipes cached and partial
+  (`.tmp`) downloads, and a failed/cancelled decrypt auto-clears its partial. Choose the
+  output folder from Settings or the Library tab.
 - Library view of produced IPAs; Doctor end-to-end environment check.
 - Automatic update check on launch (opt-out in Settings): a banner appears when a newer
   GitHub release exists and can download + SHA-256-verify + silently install it in place.

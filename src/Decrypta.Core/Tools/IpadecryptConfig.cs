@@ -16,7 +16,7 @@ public sealed class IpadecryptConfig
     private readonly string _path;
 
     public IpadecryptConfig(string? rootDir = null)
-        => _path = System.IO.Path.Combine(rootDir ?? AppPaths.IpadecryptRoot, "config.json");
+        => _path = System.IO.Path.Combine(rootDir ?? AppPaths.LegacyIpadecryptRoot, "config.json");
 
     public string ConfigPath => _path;
 

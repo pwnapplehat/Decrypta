@@ -15,13 +15,23 @@
                  Text="Decrypted IPAs you have produced. Install them with your favourite sideloading tool (TrollStore, Sideloadly, …)."/>
     </StackPanel>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,0">
-      <ui:Button Content="Refresh" Command="{Binding RefreshLibraryCommand}"/>
-      <ui:Button Content="Open folder" Appearance="Transparent" Margin="8,0,0,0"
-                 Command="{Binding OpenOutputFolderCommand}"/>
-      <TextBlock Text="{Binding OutputDirectory}" Style="{StaticResource Text.Caption}"
-                 VerticalAlignment="Center" Margin="12,0,0,0"/>
-    </StackPanel>
+    <Grid Grid.Row="1" Margin="0,16,0,0">
+      <StackPanel Orientation="Horizontal">
+        <ui:Button Content="Refresh" Command="{Binding RefreshLibraryCommand}"/>
+        <ui:Button Content="Open folder" Appearance="Transparent" Margin="8,0,0,0"
+                   Command="{Binding OpenOutputFolderCommand}"/>
+        <ui:Button Content="Change folder…" Appearance="Transparent" Margin="4,0,0,0"
+                   Command="{Binding ChangeOutputFolderCommand}"/>
+        <TextBlock Text="{Binding OutputDirectory}" Style="{StaticResource Text.Caption}"
+                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <TextBlock VerticalAlignment="Center" Style="{StaticResource Text.Caption}" Margin="0,0,10,0">
+          <Run Text="Download cache:"/><Run Text=" "/><Run Text="{Binding CacheSizeText, Mode=OneWay}"/>
+        </TextBlock>
+        <ui:Button Content="Clean cache" Appearance="Transparent" Command="{Binding CleanCacheCommand}"/>
+      </StackPanel>
+    </Grid>
 
     <ui:Card Grid.Row="2" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="8">
       <ScrollViewer VerticalScrollBarVisibility="Auto">

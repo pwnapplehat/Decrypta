@@ -100,6 +100,84 @@ public class IpadecryptConfigTests
     }
 }
 
+public class AccountServiceTests
+{
+    [Fact]
+    public void SlugFor_is_deterministic_and_filesystem_safe()
+    {
+        var a = AccountService.SlugFor("Me.Name+tag@example.com");
+        var b = AccountService.SlugFor("me.name+tag@example.com"); // case-insensitive
+        Assert.Equal(a, b);
+        Assert.DoesNotContain('@', a);
+        Assert.DoesNotContain('+', a);
+        Assert.DoesNotContain('.', a);
+        Assert.Matches("^[a-z0-9_]+$", a);
+    }
+
+    [Fact]
+    public void SlugFor_distinguishes_different_emails()
+    {
+        Assert.NotEqual(AccountService.SlugFor("a@example.com"), AccountService.SlugFor("b@example.com"));
+    }
+}
+
+public class CacheManagerTests
+{
+    private static string TempDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "decrypta-cache-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        return d;
+    }
+
+    [Fact]
+    public void Clean_wipes_full_and_partial_downloads_and_reports_bytes()
+    {
+        var outDir = TempDir();
+        try
+        {
+            var cache = Path.Combine(outDir, CacheManager.CacheFolderName);
+            Directory.CreateDirectory(cache);
+            File.WriteAllBytes(Path.Combine(cache, "app_1.0.ipa"), new byte[2048]);
+            File.WriteAllBytes(Path.Combine(cache, "app_2.0.ipa.tmp"), new byte[1024]);
+
+            long size = CacheManager.CacheSizeBytes(outDir, []);
+            Assert.Equal(3072, size);
+
+            long freed = CacheManager.Clean(outDir, []);
+            Assert.Equal(3072, freed);
+            Assert.Empty(Directory.GetFiles(cache));
+        }
+        finally
+        {
+            Directory.Delete(outDir, true);
+        }
+    }
+
+    [Fact]
+    public void CleanPartials_removes_only_tmp_files()
+    {
+        var outDir = TempDir();
+        try
+        {
+            var cache = Path.Combine(outDir, CacheManager.CacheFolderName);
+            Directory.CreateDirectory(cache);
+            var full = Path.Combine(cache, "app_1.0.ipa");
+            File.WriteAllBytes(full, new byte[2048]);
+            File.WriteAllBytes(Path.Combine(cache, "app_2.0.ipa.tmp"), new byte[512]);
+
+            long freed = CacheManager.CleanPartials(outDir, []);
+            Assert.Equal(512, freed);
+            Assert.True(File.Exists(full));                 // completed download kept
+            Assert.Empty(Directory.GetFiles(cache, "*.tmp")); // partials gone
+        }
+        finally
+        {
+            Directory.Delete(outDir, true);
+        }
+    }
+}
+
 public class UsbTunnelTests
 {
     [Fact]

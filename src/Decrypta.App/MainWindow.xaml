@@ -60,35 +60,49 @@
             </ui:Button.Icon>
           </ui:Button>
         </StackPanel>
-        <Border HorizontalAlignment="Right" VerticalAlignment="Center">
-          <Border.Style>
-            <Style TargetType="Border" BasedOn="{StaticResource Badge}">
-              <Setter Property="Background" Value="#2B1620"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding ServiceUp}" Value="True">
-                  <Setter Property="Background" Value="#12241C"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Border.Style>
-          <StackPanel Orientation="Horizontal">
-            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-              <Ellipse.Style>
-                <Style TargetType="Ellipse">
-                  <Setter Property="Fill" Value="{StaticResource Brush.Danger}"/>
-                  <Style.Triggers>
-                    <DataTrigger Binding="{Binding ServiceUp}" Value="True">
-                      <Setter Property="Fill" Value="{StaticResource Brush.Success}"/>
-                    </DataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </Ellipse.Style>
-            </Ellipse>
-            <TextBlock Text="{Binding DeviceStatus}" FontSize="11.5" FontWeight="SemiBold"
-                       Margin="7,0,0,0" VerticalAlignment="Center"
-                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-          </StackPanel>
-        </Border>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <!-- Apple ID sign-in indicator -->
+          <Border Margin="0,0,10,0">
+            <Border.Style>
+              <Style TargetType="Border" BasedOn="{StaticResource Badge}">
+                <Setter Property="Background" Value="#22202A"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsSignedIn}" Value="True">
+                    <Setter Property="Background" Value="#1C1633"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                       Fill="{Binding IsSignedIn, Converter={StaticResource BoolToBrush}}"/>
+              <TextBlock Text="{Binding SignedInSummary}" FontSize="11.5" FontWeight="SemiBold"
+                         Margin="7,0,0,0" VerticalAlignment="Center" MaxWidth="220"
+                         TextTrimming="CharacterEllipsis"
+                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </StackPanel>
+          </Border>
+          <!-- Device connection indicator -->
+          <Border>
+            <Border.Style>
+              <Style TargetType="Border" BasedOn="{StaticResource Badge}">
+                <Setter Property="Background" Value="#2B1620"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ServiceUp}" Value="True">
+                    <Setter Property="Background" Value="#12241C"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                       Fill="{Binding ServiceUp, Converter={StaticResource BoolToBrush}}"/>
+              <TextBlock Text="{Binding DeviceStatus}" FontSize="11.5" FontWeight="SemiBold"
+                         Margin="7,0,0,0" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
       </Grid>
 
       <!-- ══════════ Update banner ══════════ -->

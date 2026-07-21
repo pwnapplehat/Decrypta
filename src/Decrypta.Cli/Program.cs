@@ -81,8 +81,8 @@ static async Task<int> DecryptCmd(string[] args)
         return 1;
     }
     var target = args[1];
-    var engine = new DecryptaEngine();
     var settings = Settings.Load();
+    var engine = new DecryptaEngine(settings);
 
     var device = engine.Devices.Select(ArgValue(args, "--udid"))
                  ?? throw new DecryptaException("no matching device connected");

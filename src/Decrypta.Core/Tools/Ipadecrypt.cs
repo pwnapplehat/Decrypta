@@ -11,11 +11,14 @@ public sealed class Ipadecrypt
     public Ipadecrypt(string? exe = null, string? rootDir = null)
     {
         _exe = exe ?? AppPaths.IpadecryptExe;
-        _rootDir = rootDir ?? AppPaths.IpadecryptRoot;
+        _rootDir = rootDir ?? AppPaths.LegacyIpadecryptRoot;
         Config = new IpadecryptConfig(_rootDir);
     }
 
     public bool Exists => File.Exists(_exe);
+
+    /// <summary>The ipadecrypt --root-dir this instance drives (holds config.json, cookies, cache).</summary>
+    public string RootDir => _rootDir;
 
     private List<string> Base() => ["--root-dir", _rootDir];
 

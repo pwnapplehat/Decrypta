@@ -6,9 +6,34 @@ namespace Decrypta.App.Views;
 
 public partial class SignInView : UserControl
 {
-    public SignInView() => InitializeComponent();
+    private MainViewModel? _hooked;
+
+    public SignInView()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, _) => HookVm();
+    }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
+
+    private void HookVm()
+    {
+        if (_hooked is not null)
+        {
+            _hooked.ClearPasswordBoxesRequested -= ClearPasswordBoxes;
+        }
+        _hooked = Vm;
+        if (_hooked is not null)
+        {
+            _hooked.ClearPasswordBoxesRequested += ClearPasswordBoxes;
+        }
+    }
+
+    private void ClearPasswordBoxes()
+    {
+        ApplePw.Password = string.Empty;
+        SshPw.Password = string.Empty;
+    }
 
     private void OnApplePwChanged(object sender, System.Windows.RoutedEventArgs e)
     {

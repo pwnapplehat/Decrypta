@@ -14,8 +14,8 @@ namespace Decrypta.App.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
-    private readonly DecryptaEngine _engine = new();
     private readonly Settings _settings = Settings.Load();
+    private readonly DecryptaEngine _engine;
     private readonly Dispatcher _dispatcher = Application.Current.Dispatcher;
     private readonly StringBuilder _decryptLog = new();
     private readonly StringBuilder _signInLog = new();
@@ -26,6 +26,7 @@ public sealed class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        _engine = new DecryptaEngine(_settings);
         SshUser = _settings.SshUser;
         Storefront = _settings.Storefront;
         Verbose = _settings.VerboseLog;
@@ -34,23 +35,26 @@ public sealed class MainViewModel : ObservableObject
 
         DecryptCommand = new RelayCommand(() => _ = RunDecryptAsync(), () => !IsBusy);
         SignInCommand = new RelayCommand(() => _ = RunSignInAsync(), () => !IsBusy);
-        ResetSignInCommand = new RelayCommand(ResetSignIn);
+        NewAccountCommand = new RelayCommand(NewAccount, () => !IsBusy);
+        SwitchAccountCommand = new RelayCommand(SwitchAccount, () => !IsBusy);
+        SignOutCommand = new RelayCommand(SignOutActive, () => !IsBusy);
+        RemoveAccountCommand = new RelayCommand(RemoveActiveAccount, () => !IsBusy);
         SendConsoleCommand = new RelayCommand(SendConsole);
         RunDoctorCommand = new RelayCommand(() => _ = RunDoctorAsync(), () => !IsBusy);
         RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
         RefreshLibraryCommand = new RelayCommand(RefreshLibrary);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
+        ChangeOutputFolderCommand = new RelayCommand(ChangeOutputFolder);
         SaveSettingsCommand = new RelayCommand(SaveSettings);
+        CleanCacheCommand = new RelayCommand(() => _ = CleanCacheAsync(), () => !IsBusy);
         CancelCommand = new RelayCommand(CancelActive, () => IsBusy);
         InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync(), () => !_updateInstalling);
         ViewUpdateCommand = new RelayCommand(ViewUpdate);
         DismissUpdateCommand = new RelayCommand(() => UpdateBannerVisible = false);
 
-        RefreshSignedInSummary();
+        RefreshAccounts();
+        _ = RefreshCacheSizeAsync();
     }
-
-    private void RefreshSignedInSummary()
-        => SignedInSummary = _engine.IsSignedIn ? $"signed in · {_engine.SignedInEmail}" : "not signed in";
 
     // ---- navigation ----
     /// <summary>Raised to ask the shell to switch tabs (e.g. jump to Sign in on a 2FA prompt).</summary>
@@ -133,9 +137,24 @@ public sealed class MainViewModel : ObservableObject
     private bool _autoUpdateCheck = true;
     public bool AutoUpdateCheck { get => _autoUpdateCheck; set => SetProperty(ref _autoUpdateCheck, value); }
 
-    // ---- status bar: signed-in summary ----
+    // ---- status bar: signed-in summary + indicator ----
     private string _signedInSummary = "not signed in";
     public string SignedInSummary { get => _signedInSummary; set => SetProperty(ref _signedInSummary, value); }
+
+    private bool _isSignedIn;
+    public bool IsSignedIn { get => _isSignedIn; set => SetProperty(ref _isSignedIn, value); }
+
+    // ---- accounts (multiple Apple IDs) ----
+    public ObservableCollection<AccountView> Accounts { get; } = [];
+
+    private AccountView? _selectedAccount;
+    public AccountView? SelectedAccount { get => _selectedAccount; set => SetProperty(ref _selectedAccount, value); }
+
+    public bool HasAccounts => Accounts.Count > 0;
+
+    // ---- cache / storage ----
+    private string _cacheSizeText = "—";
+    public string CacheSizeText { get => _cacheSizeText; set => SetProperty(ref _cacheSizeText, value); }
 
     // ---- auto-update banner ----
     private UpdateInfo? _pendingUpdate;
@@ -179,13 +198,18 @@ public sealed class MainViewModel : ObservableObject
 
     public RelayCommand DecryptCommand { get; }
     public RelayCommand SignInCommand { get; }
-    public RelayCommand ResetSignInCommand { get; }
+    public RelayCommand NewAccountCommand { get; }
+    public RelayCommand SwitchAccountCommand { get; }
+    public RelayCommand SignOutCommand { get; }
+    public RelayCommand RemoveAccountCommand { get; }
     public RelayCommand SendConsoleCommand { get; }
     public RelayCommand RunDoctorCommand { get; }
     public RelayCommand RefreshDevicesCommand { get; }
     public RelayCommand RefreshLibraryCommand { get; }
     public RelayCommand OpenOutputFolderCommand { get; }
+    public RelayCommand ChangeOutputFolderCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand CleanCacheCommand { get; }
     public RelayCommand CancelCommand { get; }
 
     // ===================================================================
@@ -365,7 +389,7 @@ public sealed class MainViewModel : ObservableObject
             int rc = await _signInJob.Completion;
             Status = rc == 0 ? "sign-in complete" : $"sign-in exited with code {rc}";
             AppendSignIn($"\n[exit {rc}]\n");
-            RefreshSignedInSummary();
+            RefreshAccounts();
         }
         catch (DecryptaException ex)
         {
@@ -395,12 +419,122 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void ResetSignIn()
+    // ===================================================================
+    //  Accounts (multiple Apple IDs)
+    // ===================================================================
+
+    private void RefreshAccounts()
     {
-        _engine.ResetSignIn();
-        AppendSignIn("\n[reset] cleared stored Apple credentials\n");
-        Status = "credentials reset";
-        RefreshSignedInSummary();
+        var list = _engine.ListAccounts();
+        Accounts.Clear();
+        foreach (var a in list)
+        {
+            Accounts.Add(a);
+        }
+        SelectedAccount = list.FirstOrDefault(a => a.IsActive) ?? list.FirstOrDefault();
+        Raise(nameof(HasAccounts));
+
+        IsSignedIn = _engine.IsSignedIn;
+        var email = _engine.SignedInEmail;
+        SignedInSummary = IsSignedIn && email is not null ? email : "not signed in";
+        // If the active account has creds, prefill the email box for clarity.
+        if (email is not null && string.IsNullOrWhiteSpace(Email))
+        {
+            Email = email;
+        }
+    }
+
+    /// <summary>Start adding a new Apple ID: clear the form and focus sign-in.</summary>
+    private void NewAccount()
+    {
+        Email = "";
+        ApplePassword = "";
+        SshPassword = "";
+        ClearPasswordBoxesRequested?.Invoke();
+        _signInLog.Clear();
+        SignInLogText = "";
+        Status = "enter a new Apple ID and press Sign in";
+        RequestNavigate(1);
+    }
+
+    /// <summary>Raised so the Sign in view can clear its PasswordBoxes (they can't be bound).</summary>
+    public event Action? ClearPasswordBoxesRequested;
+
+    private void SwitchAccount()
+    {
+        if (SelectedAccount is null)
+        {
+            return;
+        }
+        _engine.SwitchAccount(SelectedAccount.Slug);
+        RefreshAccounts();
+        Status = $"switched to {SelectedAccount?.Email}";
+    }
+
+    private void RemoveActiveAccount()
+    {
+        var acc = SelectedAccount;
+        if (acc is null)
+        {
+            return;
+        }
+        _engine.RemoveAccount(acc.Slug);
+        AppendSignIn($"\n[removed account {acc.Email}]\n");
+        Status = $"removed {acc.Email}";
+        RefreshAccounts();
+    }
+
+    private void SignOutActive()
+    {
+        _engine.SignOutActive();
+        AppendSignIn("\n[signed out - cleared stored Apple credentials for the active account]\n");
+        Status = "signed out";
+        RefreshAccounts();
+    }
+
+    // ===================================================================
+    //  Cache / storage
+    // ===================================================================
+
+    private async Task RefreshCacheSizeAsync()
+    {
+        try
+        {
+            long bytes = await Task.Run(() => _engine.CacheSizeBytes());
+            CacheSizeText = bytes <= 0 ? "empty" : HumanSize(bytes);
+        }
+        catch (Exception)
+        {
+            CacheSizeText = "—";
+        }
+    }
+
+    private async Task CleanCacheAsync()
+    {
+        if (IsBusy)
+        {
+            Status = "can't clean while a job is running";
+            return;
+        }
+        Status = "cleaning cache…";
+        long freed = await Task.Run(() => _engine.CleanCache());
+        await RefreshCacheSizeAsync();
+        Status = freed > 0 ? $"cleaned {HumanSize(freed)} of cached/partial downloads" : "cache already empty";
+    }
+
+    private void ChangeOutputFolder()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Choose where decrypted IPAs (and their download cache) are saved",
+            InitialDirectory = Directory.Exists(OutputDirectory) ? OutputDirectory : AppPaths.DefaultOutputDir,
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            OutputDirectory = dialog.FolderName;
+            SaveSettings();
+            _ = RefreshCacheSizeAsync();
+        }
     }
 
     private void AppendSignIn(string text)
@@ -488,6 +622,16 @@ public sealed class MainViewModel : ObservableObject
             {
                 RefreshLibrary();
             }
+            else
+            {
+                // An interrupted/failed decrypt can leave a partial .tmp download — clear it.
+                long freed = await Task.Run(() => _engine.CleanPartials());
+                if (freed > 0)
+                {
+                    AppendDecrypt($"[cache] removed {HumanSize(freed)} of partial download\n");
+                }
+            }
+            await RefreshCacheSizeAsync();
         }
         catch (DecryptaException ex)
         {

@@ -16,6 +16,7 @@
 
       <local:BoolToVisibilityConverter x:Key="BoolToVis"/>
       <local:BoolToVisibilityConverter x:Key="BoolToVisInverted" Invert="True"/>
+      <local:BoolToBrushConverter x:Key="BoolToBrush"/>
       <local:CheckStatusToBrushConverter x:Key="CheckBrush"/>
       <local:CheckStatusToLabelConverter x:Key="CheckLabel"/>
     </ResourceDictionary>

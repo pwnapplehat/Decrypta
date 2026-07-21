@@ -17,7 +17,13 @@ public static class AppPaths
     public static string StateDir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Decrypta");
 
-    public static string IpadecryptRoot => Path.Combine(StateDir, "ipadecrypt");
+    /// <summary>Legacy single-account root (pre multi-account). Migrated into accounts\ on upgrade.</summary>
+    public static string LegacyIpadecryptRoot => Path.Combine(StateDir, "ipadecrypt");
+
+    public static string AccountsDir => Path.Combine(StateDir, "accounts");
+
+    /// <summary>Per-account ipadecrypt root (its own config.json + cookies), isolated per Apple ID.</summary>
+    public static string AccountRoot(string slug) => Path.Combine(AccountsDir, slug);
 
     public static string SettingsPath => Path.Combine(StateDir, "settings.json");
 
@@ -27,6 +33,6 @@ public static class AppPaths
     public static void EnsureBaseDirs()
     {
         Directory.CreateDirectory(StateDir);
-        Directory.CreateDirectory(IpadecryptRoot);
+        Directory.CreateDirectory(AccountsDir);
     }
 }

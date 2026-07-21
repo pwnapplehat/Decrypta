@@ -6,10 +6,12 @@
     <StackPanel Margin="28,20,28,28" MaxWidth="860" HorizontalAlignment="Left">
       <TextBlock Text="Settings" Style="{StaticResource Text.Title}"/>
 
-      <TextBlock Text="Output" Style="{StaticResource Text.Section}" Margin="0,22,0,10"/>
+      <TextBlock Text="Output &amp; storage" Style="{StaticResource Text.Section}" Margin="0,22,0,10"/>
       <ui:Card>
         <StackPanel>
           <TextBlock Text="Where decrypted IPAs are saved" Style="{StaticResource Text.Body}" FontWeight="Medium"/>
+          <TextBlock Style="{StaticResource Text.Caption}" Margin="0,3,0,0"
+                     Text="The encrypted-download cache is kept inside this folder (a hidden .decrypta-cache), so everything is contained here — nothing is written to system temp."/>
           <Grid Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
@@ -17,6 +19,19 @@
             </Grid.ColumnDefinitions>
             <ui:TextBox Grid.Column="0" Text="{Binding OutputDirectory, UpdateSourceTrigger=PropertyChanged}"/>
             <ui:Button Grid.Column="1" Content="Browse…" Margin="10,0,0,0" Click="OnBrowse"/>
+          </Grid>
+
+          <Separator Background="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,14"/>
+
+          <Grid>
+            <StackPanel MaxWidth="620" HorizontalAlignment="Left">
+              <TextBlock Text="Download cache" Style="{StaticResource Text.Body}" FontWeight="Medium"/>
+              <TextBlock Style="{StaticResource Text.Caption}" Margin="0,3,0,0">
+                <Run Text="Cached and partial (.tmp) downloads currently use"/><Run Text=" "/><Run Text="{Binding CacheSizeText, Mode=OneWay}"/><Run Text=". Cleaning removes them fully — a failed or cancelled decrypt leaves nothing behind."/>
+              </TextBlock>
+            </StackPanel>
+            <ui:Button Content="Clean cache" Appearance="Secondary" HorizontalAlignment="Right"
+                       VerticalAlignment="Center" Command="{Binding CleanCacheCommand}"/>
           </Grid>
         </StackPanel>
       </ui:Card>
