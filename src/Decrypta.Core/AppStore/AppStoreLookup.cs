@@ -102,6 +102,45 @@ public static partial class AppStoreLookup
         return null;
     }
 
+    /// <summary>Look up the numeric App Store id (trackId / salableAdamId) for a bundle id,
+    /// trying each storefront country in order. Returns null if none resolve.</summary>
+    public static async Task<long?> LookupAppIdAsync(
+        string bundleId, IEnumerable<string?> countries, CancellationToken ct = default)
+    {
+        foreach (var country in countries.Where(c => !string.IsNullOrWhiteSpace(c)).Append(null).Distinct())
+        {
+            string url = $"https://itunes.apple.com/lookup?bundleId={Uri.EscapeDataString(bundleId)}";
+            if (!string.IsNullOrWhiteSpace(country))
+            {
+                url += $"&country={Uri.EscapeDataString(country!)}";
+            }
+            try
+            {
+                using var resp = await Http.GetAsync(url, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+                await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+                if (doc.RootElement.TryGetProperty("results", out var results) &&
+                    results.ValueKind == JsonValueKind.Array &&
+                    results.GetArrayLength() > 0 &&
+                    results[0].TryGetProperty("trackId", out var track) &&
+                    track.ValueKind == JsonValueKind.Number &&
+                    track.TryGetInt64(out long id))
+                {
+                    return id;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                // try next country / give up
+            }
+        }
+        return null;
+    }
+
     private static bool IsAllDigits(string s) => s.Length > 0 && s.All(char.IsDigit);
 
     [GeneratedRegex(@"/id(\d+)")]

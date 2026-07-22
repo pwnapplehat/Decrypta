@@ -18,7 +18,6 @@ public sealed class DecryptaEngine
     private readonly DeviceService _devices;
     private readonly Settings _settings;
     private readonly AccountService _accounts;
-    private readonly Ipatool _ipatool = new();
 
     public DecryptaEngine(Settings? settings = null)
     {
@@ -105,98 +104,125 @@ public sealed class DecryptaEngine
     }
 
     // ---- version listing (for the "pick a specific version" UI) ----
+    //
+    // Backed by Apple's volumeStoreDownloadProduct endpoint, reusing the active account's
+    // ipadecrypt session (no second sign-in). One list call returns every release id (newest
+    // first); names/dates are resolved per id in parallel, so it's fast and can page on demand.
 
-    public sealed record VersionsResult(IReadOnlyList<AppVersion>? Versions, bool Needs2Fa, string? Error);
+    /// <summary>Opaque handle to a loaded version list: the app's numeric id plus every release
+    /// identifier ordered newest→latest-first. Hand slices of <see cref="VersionIds"/> back to
+    /// <see cref="ResolveVersionsAsync"/> to fill in human version numbers a page at a time.</summary>
+    public sealed record VersionList(long AdamId, IReadOnlyList<string> VersionIds);
+
+    public sealed record VersionListResult(VersionList? List, string? Error);
 
     /// <summary>
-    /// List an app's App Store versions so the user can pick one. Resolves the target to a
-    /// bundle id, ensures ipatool is signed in as the active account (returns Needs2Fa so the
-    /// caller can prompt for a code), lists every external version id, and resolves the
-    /// human version number + date for the newest <paramref name="resolveNewest"/> only —
-    /// each metadata call hits Apple's private endpoint, which is rate-limited, so we keep it
-    /// small and gently paced. Older versions are still selectable by id.
+    /// Resolve the target to a numeric App Store id and fetch the full ordered list of its release
+    /// identifiers in a single call. No names are resolved yet — call <see cref="ResolveVersionsAsync"/>
+    /// for the page you want to show. Returns a friendly error if the session is missing/expired.
     /// </summary>
-    public async Task<VersionsResult> LoadVersionsAsync(
-        string target, string? authCode, int resolveNewest, Action<string>? progress, CancellationToken ct = default)
+    public async Task<VersionListResult> LoadVersionListAsync(
+        string target, Action<string>? progress, CancellationToken ct = default)
     {
-        if (!_ipatool.Exists)
+        long? adamId = null;
+        var (parsedId, country) = AppStoreLookup.ParseAppStoreRef(target);
+        var countries = new[] { country, string.IsNullOrWhiteSpace(_settings.Storefront) ? null : _settings.Storefront };
+        if (parsedId is not null && long.TryParse(parsedId, out long pid))
         {
-            return new VersionsResult(null, false, "ipatool.exe not found under tools\\.");
+            adamId = pid;
         }
-
-        string? bundleId = AppStoreLookup.LooksLikeBundleId(target) ? target.Trim() : null;
-        if (bundleId is null)
+        else if (AppStoreLookup.LooksLikeBundleId(target))
         {
-            var (appId, country) = AppStoreLookup.ParseAppStoreRef(target);
-            if (appId is null)
+            progress?.Invoke($"resolving {target.Trim()}…\n");
+            adamId = await AppStoreLookup.LookupAppIdAsync(target.Trim(), countries, ct).ConfigureAwait(false);
+            if (adamId is null)
             {
-                return new VersionsResult(null, false, "Enter a bundle id, App Store id or link first.");
-            }
-            progress?.Invoke($"resolving App Store id {appId}…\n");
-            bundleId = await AppStoreLookup.LookupBundleIdAsync(
-                appId, [country, string.IsNullOrWhiteSpace(_settings.Storefront) ? null : _settings.Storefront], ct)
-                .ConfigureAwait(false);
-            if (bundleId is null)
-            {
-                return new VersionsResult(null, false, $"Couldn't resolve id {appId} to a bundle id.");
+                return new VersionListResult(null, $"Couldn't resolve {target.Trim()} to an App Store id.");
             }
         }
-
-        var idec = _accounts.Active();
-        var email = idec?.Config.AppleEmail();
-        var password = idec?.Config.ApplePassword();
-        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        else
         {
-            return new VersionsResult(null, false, "Sign in first — listing versions needs your Apple ID.");
+            return new VersionListResult(null, "Enter a bundle id, App Store id or link first.");
         }
 
-        var who = await _ipatool.AuthInfoEmailAsync(ct).ConfigureAwait(false);
-        if (!string.Equals(who, email, StringComparison.OrdinalIgnoreCase))
+        var session = StoreKitSession.Load(_accounts.Active()?.RootDir);
+        if (session is null || !session.IsUsable)
         {
-            progress?.Invoke("signing in to ipatool for version listing…\n");
-            var auth = await _ipatool.AuthLoginAsync(email!, password!, authCode, ct).ConfigureAwait(false);
-            if (!auth.Ok)
-            {
-                return auth.Needs2Fa
-                    ? new VersionsResult(null, true, null)
-                    : new VersionsResult(null, false, auth.Error ?? "ipatool sign-in failed");
-            }
+            return new VersionListResult(null, "Sign in first — listing versions needs your Apple ID session.");
         }
 
-        progress?.Invoke($"listing versions for {bundleId}…\n");
-        IReadOnlyList<string> ids;
+        progress?.Invoke("listing versions…\n");
         try
         {
-            ids = await _ipatool.ListVersionIdsAsync(bundleId, ct).ConfigureAwait(false);
+            using var client = new StoreKitClient(session);
+            var info = await client.ListAsync(adamId.Value, ct).ConfigureAwait(false);
+            if (info.Error is not null)
+            {
+                return new VersionListResult(null, SessionHint(info.Error));
+            }
+            if (info.OrderedVersionIds.Count == 0)
+            {
+                return new VersionListResult(null, "No versions returned for this app.");
+            }
+            var newestFirst = info.OrderedVersionIds.Reverse().ToList(); // Apple returns oldest→newest
+            return new VersionListResult(new VersionList(adamId.Value, newestFirst), null);
         }
-        catch (IpatoolException ex)
+        catch (StoreKitException ex)
         {
-            return new VersionsResult(null, false, ex.Message);
+            return new VersionListResult(null, ex.Message);
         }
+        catch (HttpRequestException ex)
+        {
+            return new VersionListResult(null, $"network error listing versions: {ex.Message}");
+        }
+    }
+
+    /// <summary>Resolve a set of release identifiers to human version numbers + dates, in parallel
+    /// (throttled). Unresolved ids still come back (labelled by id) so the UI never loses a row.
+    /// <paramref name="latestId"/> is flagged as the current release.</summary>
+    public async Task<IReadOnlyList<AppVersion>> ResolveVersionsAsync(
+        long adamId, IReadOnlyList<string> ids, string? latestId, CancellationToken ct = default)
+    {
         if (ids.Count == 0)
         {
-            return new VersionsResult([], false, null);
+            return [];
         }
+        var session = StoreKitSession.Load(_accounts.Active()?.RootDir)
+            ?? throw new DecryptaException("Apple ID session not found — sign in first.");
+        using var client = new StoreKitClient(session);
+        using var gate = new SemaphoreSlim(8);
 
-        var newestFirst = ids.Reverse().ToList(); // Apple returns oldest->newest
-        int toResolve = Math.Min(resolveNewest, newestFirst.Count);
-        var result = new List<AppVersion>(newestFirst.Count);
-        for (int i = 0; i < newestFirst.Count; i++)
+        var tasks = ids.Select(async id =>
         {
-            string id = newestFirst[i];
-            if (i < toResolve)
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                progress?.Invoke($"resolving version {i + 1}/{toResolve}…\n");
-                var meta = await _ipatool.GetVersionMetadataAsync(bundleId, id, ct).ConfigureAwait(false);
-                result.Add((meta ?? new AppVersion(id, null, null)) with { IsLatest = i == 0 });
-                await Task.Delay(120, ct).ConfigureAwait(false);
+                var v = await client.ResolveAsync(adamId, id, ct).ConfigureAwait(false)
+                        ?? new AppVersion(id, null);
+                return v with { IsLatest = id == latestId };
             }
-            else
+            catch (HttpRequestException)
             {
-                result.Add(new AppVersion(id, null, null) { IsLatest = i == 0 });
+                return new AppVersion(id, null) { IsLatest = id == latestId };
             }
+            finally
+            {
+                gate.Release();
+            }
+        });
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static string SessionHint(string error)
+    {
+        // Apple's token-expiry failures surface as generic store errors; nudge the user to refresh.
+        if (error.Contains("2034") || error.Contains("2042") ||
+            error.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("sign", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Apple ID session expired — run a decrypt or re-sign-in to refresh, then try again.";
         }
-        return new VersionsResult(result, false, null);
+        return error;
     }
 
     // ---- cache / cleanup ----

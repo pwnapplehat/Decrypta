@@ -21,7 +21,6 @@
 
   <!-- Bundle the native tools next to the app so it is self-contained. -->
   <ItemGroup>
-    <None Include="..\..\tools\ipatool.exe" Link="tools\ipatool.exe" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\tools\ipadecrypt.exe" Link="tools\ipadecrypt.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

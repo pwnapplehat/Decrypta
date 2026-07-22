@@ -28,5 +28,5 @@ out/
 # Other tools
 remove_black_corners.py
 
-# NOTE: tools/ipatool.exe and tools/ipadecrypt.exe ARE committed on purpose: the app bundles
-# them and the build copies them next to the output. They come from the upstream MIT releases.
+# NOTE: tools/ipadecrypt.exe IS committed on purpose: the app bundles it and the build copies it
+# next to the output. It comes from the upstream MIT release.

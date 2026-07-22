@@ -42,7 +42,8 @@ device) transparently.
 ```
  Windows (Decrypta.exe, native .NET)                 iPhone / iPad (jailbroken)
  ───────────────────────────────────                 ──────────────────────────
- App Store sign-in + download  ─── ipatool ───▶ Apple CDN
+ App Store sign-in + download  ── ipadecrypt ──▶ Apple
+ Version history (reuses session) ── Decrypta ─▶ Apple (StoreKit)
  usbmux TCP tunnel  127.0.0.1 ────USB / Wi-Fi──▶ device :22 (OpenSSH)
  ipadecrypt over SSH/SFTP  ─────────────────────▶ on-device helper
                                                    (task_for_pid + mach_vm_read →
@@ -129,12 +130,12 @@ dotnet test  tests/Decrypta.Core.Tests/Decrypta.Core.Tests.csproj -c Release
 dotnet run   --project src/Decrypta.App/Decrypta.App.csproj -c Release
 ```
 
-Requires the .NET 10 SDK. The native `ipatool.exe` and `ipadecrypt.exe` live in `tools\`
-and are copied next to the built app automatically.
+Requires the .NET 10 SDK. The native `ipadecrypt.exe` lives in `tools\` and is copied next to
+the built app automatically.
 
 ```
 src/Decrypta.Core/    engine: usbmux client + lockdown reader, USB/Wi-Fi→SSH tunnel,
-                      ipatool/ipadecrypt runners, doctor, engine (pure C#, no deps)
+                      ipadecrypt runner, App Store StoreKit client, doctor (pure C#, no deps)
 src/Decrypta.App/     WPF GUI — Windows 11 Fluent via WPF UI (MIT), Mica backdrop
 src/Decrypta.Cli/     decrypta-cli
 tests/                Core test suite (usbmux framing, config, tunnel, ANSI)
@@ -152,13 +153,14 @@ tests/                Core test suite (usbmux framing, config, tunnel, ANSI)
 
 ## Credits
 
-- [majd/ipatool](https://github.com/majd/ipatool) — App Store auth + download
-- [londek/ipadecrypt](https://github.com/londek/ipadecrypt) — on-device decrypt + repackaging,
-  built on [34306/TrollDecryptJB](https://github.com/34306/TrollDecryptJB)
+- [londek/ipadecrypt](https://github.com/londek/ipadecrypt) — App Store auth + download and
+  on-device decrypt + repackaging, built on [34306/TrollDecryptJB](https://github.com/34306/TrollDecryptJB)
+- [majd/ipatool](https://github.com/majd/ipatool) — reference for the App Store version-history API
+  Decrypta calls natively (no longer bundled)
 - [WPF UI](https://github.com/lepoco/wpfui) — Fluent controls (MIT)
 - Inspired by [34306/macOSAppstoreDecrypter](https://github.com/34306/macOSAppstoreDecrypter)
   (which needs an M1 Mac); Decrypta targets Windows users with a jailbroken device instead.
 
 ## License
 
-[MIT](LICENSE). The bundled `ipatool` and `ipadecrypt` remain under their own MIT licenses.
+[MIT](LICENSE). The bundled `ipadecrypt` remains under its own MIT license.

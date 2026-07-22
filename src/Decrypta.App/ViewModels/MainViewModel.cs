@@ -34,8 +34,9 @@ public sealed class MainViewModel : ObservableObject
         AutoUpdateCheck = _settings.AutoUpdateCheck;
 
         DecryptCommand = new RelayCommand(() => _ = RunDecryptAsync(), () => !IsBusy);
-        LoadVersionsCommand = new RelayCommand(() => _ = RunLoadVersionsAsync(null), () => !VersionsBusy);
-        SubmitVersionCodeCommand = new RelayCommand(() => _ = RunLoadVersionsAsync(Versions2FaCode));
+        LoadVersionsCommand = new RelayCommand(() => _ = RunLoadVersionsAsync(), () => !VersionsBusy);
+        LoadMoreVersionsCommand = new RelayCommand(() => _ = RunLoadMoreAsync(), () => CanLoadMore);
+        FindVersionCommand = new RelayCommand(() => _ = RunFindVersionAsync(), () => !VersionsBusy);
         SignInCommand = new RelayCommand(() => _ = RunSignInAsync(), () => !IsBusy);
         NewAccountCommand = new RelayCommand(NewAccount, () => !IsBusy);
         SwitchAccountCommand = new RelayCommand(SwitchAccount, () => !IsBusy);
@@ -110,6 +111,10 @@ public sealed class MainViewModel : ObservableObject
     // ---- version picker ----
     public ObservableCollection<Decrypta.Core.AppStore.AppVersion> AvailableVersions { get; } = [];
 
+    // The full ordered id list + app id for the currently loaded app, so "Load more" and the
+    // exact-version search can page through without re-listing.
+    private Decrypta.Core.DecryptaEngine.VersionList? _versionList;
+
     private Decrypta.Core.AppStore.AppVersion? _selectedVersion;
     public Decrypta.Core.AppStore.AppVersion? SelectedVersion
     {
@@ -127,13 +132,29 @@ public sealed class MainViewModel : ObservableObject
     public bool HasVersions => AvailableVersions.Count > 0;
 
     private bool _versionsBusy;
-    public bool VersionsBusy { get => _versionsBusy; set => SetProperty(ref _versionsBusy, value); }
+    public bool VersionsBusy
+    {
+        get => _versionsBusy;
+        set
+        {
+            if (SetProperty(ref _versionsBusy, value))
+            {
+                LoadVersionsCommand.RaiseCanExecuteChanged();
+                LoadMoreVersionsCommand.RaiseCanExecuteChanged();
+                FindVersionCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
-    private bool _versionsNeed2Fa;
-    public bool VersionsNeed2Fa { get => _versionsNeed2Fa; set => SetProperty(ref _versionsNeed2Fa, value); }
+    // "Load more" is available while there are still unresolved ids left in the loaded list.
+    public bool CanLoadMore => !VersionsBusy && _versionList is not null &&
+                               AvailableVersions.Count < _versionList.VersionIds.Count;
 
-    private string _versions2FaCode = "";
-    public string Versions2FaCode { get => _versions2FaCode; set => SetProperty(ref _versions2FaCode, value); }
+    private string _versionSearch = "";
+    public string VersionSearch { get => _versionSearch; set => SetProperty(ref _versionSearch, value); }
+
+    private string _versionCountText = "";
+    public string VersionCountText { get => _versionCountText; set => SetProperty(ref _versionCountText, value); }
 
     // ---- sign-in tab ----
     private string _email = "";
@@ -228,7 +249,8 @@ public sealed class MainViewModel : ObservableObject
 
     public RelayCommand DecryptCommand { get; }
     public RelayCommand LoadVersionsCommand { get; }
-    public RelayCommand SubmitVersionCodeCommand { get; }
+    public RelayCommand LoadMoreVersionsCommand { get; }
+    public RelayCommand FindVersionCommand { get; }
     public RelayCommand SignInCommand { get; }
     public RelayCommand NewAccountCommand { get; }
     public RelayCommand SwitchAccountCommand { get; }
@@ -706,15 +728,14 @@ public sealed class MainViewModel : ObservableObject
     }
 
     // ===================================================================
-    //  Version picker
+    //  Version picker  (default 10, Load more, exact-version search)
     // ===================================================================
 
-    private async Task RunLoadVersionsAsync(string? authCode)
+    private const int VersionPageSize = 10;
+    private const int VersionSearchCap = 60; // how deep the exact-version search will page
+
+    private async Task RunLoadVersionsAsync()
     {
-        if (VersionsBusy)
-        {
-            return;
-        }
         var target = DecryptTarget.Trim();
         if (string.IsNullOrEmpty(target))
         {
@@ -728,39 +749,31 @@ public sealed class MainViewModel : ObservableObject
         }
 
         VersionsBusy = true;
-        LoadVersionsCommand.RaiseCanExecuteChanged();
         Status = "loading versions…";
         try
         {
-            var res = await _engine.LoadVersionsAsync(
-                target, authCode, resolveNewest: 15,
-                progress: s => _dispatcher.BeginInvoke(() => Status = s.Trim()));
-
-            if (res.Needs2Fa)
+            var listed = await _engine.LoadVersionListAsync(
+                target, s => _dispatcher.BeginInvoke(() => Status = s.Trim()));
+            if (listed.Error is not null || listed.List is null)
             {
-                VersionsNeed2Fa = true;
-                Status = "enter the 6-digit code Apple sent, then Load";
-                return;
-            }
-            VersionsNeed2Fa = false;
-            Versions2FaCode = "";
-
-            if (res.Error is not null)
-            {
-                Status = res.Error;
+                Status = listed.Error ?? "no versions found";
                 return;
             }
 
+            _versionList = listed.List;
             AvailableVersions.Clear();
-            foreach (var v in res.Versions!)
+            SelectedVersion = null;
+
+            var page = _versionList.VersionIds.Take(VersionPageSize).ToList();
+            var resolved = await _engine.ResolveVersionsAsync(
+                _versionList.AdamId, page, _versionList.VersionIds.FirstOrDefault());
+            foreach (var v in resolved)
             {
                 AvailableVersions.Add(v);
             }
-            Raise(nameof(HasVersions));
+            AfterVersionsChanged();
             SelectedVersion = AvailableVersions.FirstOrDefault(v => v.IsLatest) ?? AvailableVersions.FirstOrDefault();
-            Status = AvailableVersions.Count > 0
-                ? $"{AvailableVersions.Count} version(s) — pick one (or keep latest)"
-                : "no versions returned";
+            Status = $"showing {AvailableVersions.Count} of {_versionList.VersionIds.Count} versions — pick one (or keep latest)";
         }
         catch (Exception ex)
         {
@@ -769,8 +782,117 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             VersionsBusy = false;
-            LoadVersionsCommand.RaiseCanExecuteChanged();
         }
+    }
+
+    private async Task RunLoadMoreAsync()
+    {
+        if (_versionList is null || !CanLoadMore)
+        {
+            return;
+        }
+        VersionsBusy = true;
+        try
+        {
+            var next = _versionList.VersionIds
+                .Skip(AvailableVersions.Count).Take(VersionPageSize).ToList();
+            Status = $"loading {next.Count} more…";
+            var resolved = await _engine.ResolveVersionsAsync(
+                _versionList.AdamId, next, _versionList.VersionIds.FirstOrDefault());
+            foreach (var v in resolved)
+            {
+                AvailableVersions.Add(v);
+            }
+            AfterVersionsChanged();
+            Status = $"showing {AvailableVersions.Count} of {_versionList.VersionIds.Count} versions";
+        }
+        catch (Exception ex)
+        {
+            Status = $"load more failed: {ex.Message}";
+        }
+        finally
+        {
+            VersionsBusy = false;
+        }
+    }
+
+    private async Task RunFindVersionAsync()
+    {
+        var wanted = VersionSearch.Trim().TrimStart('v', 'V');
+        if (wanted.Length == 0)
+        {
+            Status = "type a version to find, e.g. 433.0.0";
+            return;
+        }
+
+        // Already loaded? select it.
+        var have = AvailableVersions.FirstOrDefault(v =>
+            string.Equals(v.DisplayVersion, wanted, StringComparison.OrdinalIgnoreCase));
+        if (have is not null)
+        {
+            SelectedVersion = have;
+            Status = $"selected v{wanted}";
+            return;
+        }
+
+        // Not loaded yet — resolve the app first if needed.
+        if (_versionList is null)
+        {
+            await RunLoadVersionsAsync();
+            if (_versionList is null)
+            {
+                return;
+            }
+        }
+
+        VersionsBusy = true;
+        try
+        {
+            int scanned = AvailableVersions.Count;
+            while (scanned < _versionList.VersionIds.Count && scanned < VersionSearchCap)
+            {
+                var next = _versionList.VersionIds.Skip(scanned).Take(VersionPageSize).ToList();
+                Status = $"searching for v{wanted}… (checked {scanned})";
+                var resolved = await _engine.ResolveVersionsAsync(
+                    _versionList.AdamId, next, _versionList.VersionIds.FirstOrDefault());
+                foreach (var v in resolved)
+                {
+                    AvailableVersions.Add(v);
+                }
+                AfterVersionsChanged();
+                scanned = AvailableVersions.Count;
+
+                var match = AvailableVersions.FirstOrDefault(v =>
+                    string.Equals(v.DisplayVersion, wanted, StringComparison.OrdinalIgnoreCase));
+                if (match is not null)
+                {
+                    SelectedVersion = match;
+                    Status = $"found and selected v{wanted}";
+                    return;
+                }
+            }
+            Status = scanned >= VersionSearchCap
+                ? $"v{wanted} not in the newest {VersionSearchCap} — keep loading more to go deeper"
+                : $"v{wanted} not found for this app";
+        }
+        catch (Exception ex)
+        {
+            Status = $"search failed: {ex.Message}";
+        }
+        finally
+        {
+            VersionsBusy = false;
+        }
+    }
+
+    private void AfterVersionsChanged()
+    {
+        Raise(nameof(HasVersions));
+        Raise(nameof(CanLoadMore));
+        LoadMoreVersionsCommand.RaiseCanExecuteChanged();
+        VersionCountText = _versionList is null
+            ? ""
+            : $"{AvailableVersions.Count} / {_versionList.VersionIds.Count}";
     }
 
     private void AppendDecrypt(string text)

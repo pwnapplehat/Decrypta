@@ -119,37 +119,33 @@ static async Task<int> VersionsCmd(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("usage: decrypta-cli versions <bundle-id|id|url> [--auth-code <code>] [-n <count>]");
+        Console.Error.WriteLine("usage: decrypta-cli versions <bundle-id|id|url> [-n <count>]");
         return 1;
     }
     var target = args[1];
     var settings = Settings.Load();
     var engine = new DecryptaEngine(settings);
-    int count = int.TryParse(ArgValue(args, "-n"), out var n) ? Math.Clamp(n, 1, 100) : 15;
+    int count = int.TryParse(ArgValue(args, "-n"), out var n) ? Math.Clamp(n, 1, 200) : 15;
 
-    var res = await engine.LoadVersionsAsync(
-        target, ArgValue(args, "--auth-code"), count, s => Console.Error.Write(s));
-
-    if (res.Needs2Fa)
+    var listed = await engine.LoadVersionListAsync(target, s => Console.Error.Write(s));
+    if (listed.Error is not null || listed.List is null)
     {
-        Console.Error.WriteLine("Apple needs a 2FA code - re-run with: versions <app> --auth-code <code>");
-        return 2;
-    }
-    if (res.Error is not null)
-    {
-        Console.Error.WriteLine($"error: {res.Error}");
+        Console.Error.WriteLine($"error: {listed.Error ?? "no versions"}");
         return 1;
     }
-    if (res.Versions is null || res.Versions.Count == 0)
-    {
-        Console.WriteLine("no versions found");
-        return 1;
-    }
-    foreach (var v in res.Versions)
+
+    var list = listed.List;
+    var page = list.VersionIds.Take(count).ToList();
+    Console.Error.Write($"resolving {page.Count} of {list.VersionIds.Count} versions…\n");
+    var resolved = await engine.ResolveVersionsAsync(list.AdamId, page, list.VersionIds.FirstOrDefault());
+
+    foreach (var v in resolved)
     {
         Console.WriteLine($"{v.ExternalId,-12} {v.Label}");
     }
-    Console.Error.WriteLine($"\nDecrypt one with: decrypta-cli decrypt {target} --external-version-id <id>");
+    Console.Error.WriteLine(
+        $"\nShowing {resolved.Count} of {list.VersionIds.Count}. Decrypt one with: " +
+        $"decrypta-cli decrypt {target} --external-version-id <id>");
     return 0;
 }
 
@@ -169,7 +165,7 @@ static void PrintUsage()
         Usage:
           decrypta-cli devices
           decrypta-cli doctor [--udid <udid>]
-          decrypta-cli versions <bundle-id|id|url> [--auth-code <code>] [-n <count>]
+          decrypta-cli versions <bundle-id|id|url> [-n <count>]
           decrypta-cli decrypt <bundle-id|id|url|path.ipa> [--use-installed]
                        [--external-version-id <id>] [--udid <udid>] [-o <out.ipa>]
 

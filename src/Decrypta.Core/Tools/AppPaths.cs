@@ -10,11 +10,6 @@ public static class AppPaths
     public static string ToolsDir { get; set; } =
         Path.Combine(AppContext.BaseDirectory, "tools");
 
-    public static string IpatoolExe => Path.Combine(ToolsDir, "ipatool.exe");
-
-    /// <summary>Fixed passphrase so ipatool uses a non-interactive file keyring for its token.</summary>
-    public const string IpatoolKeychainPassphrase = "decrypta";
-
     public static string IpadecryptExe => Path.Combine(ToolsDir, "ipadecrypt.exe");
 
     public static string StateDir { get; } = Path.Combine(

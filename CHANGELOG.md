@@ -4,6 +4,31 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-07-22
+
+### Changed
+- **Version listing is now ~10x faster and fully dynamic.** The picker no longer shells out to
+  `ipatool` (one slow, un-parallelizable process per version, ~4s each). Decrypta now calls
+  Apple's App Store endpoint directly, **reusing your existing ipadecrypt session** — so there's
+  no second sign-in and no 2FA prompt for versions — and resolves versions **in parallel**.
+  Loading the first page is a couple of seconds instead of ~18s.
+- The dropdown now loads the **10 newest by default with a _Load more_ button** to page through
+  the rest on demand (each page is another parallel batch).
+
+### Added
+- **Find version** box: type an exact version (e.g. `433.0.0`) and Decrypta pages through the
+  history until it finds and selects it (searches up to the newest 60; use _Load more_ to go
+  deeper). Selecting any specific version pins it and forces the App Store download path.
+
+### Removed
+- The bundled `ipatool.exe` is gone — it was only used for version discovery, which is now
+  native. Smaller install, one fewer credential store, no separate sign-in.
+
+### Notes
+- Release dates were dropped from the picker labels: the list endpoint only reports the app's
+  original release date (not per-version), and the accurate per-version date lives inside each
+  IPA — not worth an extra fetch just to label a row.
+
 ## [1.0.2] - 2026-07-22
 
 ### Added

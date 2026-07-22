@@ -94,7 +94,7 @@
           <TextBlock Style="{StaticResource Text.Body}"
                      Text="App Store binaries are wrapped in Apple FairPlay DRM whose key is bound to the Secure Enclave, so decryption must run on genuine Apple silicon. Decrypta does all orchestration on Windows and uses your connected jailbroken device (over the USB cable or Wi-Fi) as the decryption engine — no macOS, no WSL."/>
           <TextBlock Style="{StaticResource Text.Caption}" Margin="0,10,0,0"
-                     Text="Built on majd/ipatool (App Store client) and londek/ipadecrypt (on-device decrypt, based on 34306/TrollDecryptJB). Use only with apps you own or have a license for."/>
+                     Text="Built on londek/ipadecrypt (App Store download + on-device decrypt, based on 34306/TrollDecryptJB), with a native App Store client for version history (approach from majd/ipatool). Use only with apps you own or have a license for."/>
         </StackPanel>
       </ui:Card>
     </StackPanel>

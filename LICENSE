@@ -22,7 +22,9 @@ SOFTWARE.
 
 ---
 
-Decrypta bundles third-party command-line tools which remain under their own
-licenses:
-  - ipatool (github.com/majd/ipatool) — MIT License
+Decrypta bundles a third-party command-line tool which remains under its own
+license:
   - ipadecrypt (github.com/londek/ipadecrypt) — MIT License
+
+Decrypta's native App Store version-history client follows the approach of
+ipatool (github.com/majd/ipatool, MIT License); no ipatool code is included.

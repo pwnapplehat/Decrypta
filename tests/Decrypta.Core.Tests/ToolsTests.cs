@@ -134,43 +134,79 @@ public class AppStoreLookupTests
     }
 }
 
-public class IpatoolVersionParsingTests
+public class StoreKitParsingTests
 {
+    // Shaped like a real volumeStoreDownloadProduct list response: the id array plus latest metadata.
+    private const string ListXml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0"><dict>
+          <key>jingleDocType</key><string>purchaseSuccess</string>
+          <key>songList</key><array><dict>
+            <key>metadata</key><dict>
+              <key>bundleShortVersionString</key><string>439.0.0</string>
+              <key>releaseDate</key><date>2026-07-18T20:27:04Z</date>
+              <key>softwareVersionExternalIdentifier</key><integer>888232954</integer>
+              <key>softwareVersionExternalIdentifiers</key><array>
+                <integer>630253062</integer><integer>887962747</integer><integer>888232954</integer>
+              </array>
+            </dict>
+          </dict></array>
+        </dict></plist>
+        """;
+
     [Fact]
-    public void ParseVersionIds_reads_ipatool_json_log_line()
+    public void Parse_reads_ordered_id_array_latest_and_display_version()
     {
-        // ipatool --format json emits zerolog-style JSON lines.
-        const string stdout =
-            "{\"level\":\"info\",\"externalVersionIdentifiers\":[\"630253062\",\"836887817\",\"842927320\"]," +
-            "\"bundleID\":\"com.apple.TestFlight\",\"success\":true}\n";
-        var ids = Ipatool.ParseVersionIds(stdout);
-        Assert.Equal(new[] { "630253062", "836887817", "842927320" }, ids);
+        var info = StoreKitClient.Parse(ListXml);
+        Assert.Null(info.Error);
+        Assert.Equal(new[] { "630253062", "887962747", "888232954" }, info.OrderedVersionIds);
+        Assert.Equal("888232954", info.LatestVersionId);
+        Assert.Equal("439.0.0", info.DisplayVersion);
     }
 
     [Fact]
-    public void ParseVersionIds_handles_numeric_array_and_noise_lines()
+    public void Parse_surfaces_failure_type_as_error()
     {
-        const string stdout =
-            "starting\n{\"externalVersionIdentifiers\":[111,222],\"success\":true}\ndone\n";
-        var ids = Ipatool.ParseVersionIds(stdout);
-        Assert.Equal(new[] { "111", "222" }, ids);
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0"><dict>
+              <key>failureType</key><string>9610</string>
+              <key>customerMessage</key><string>License not found.</string>
+            </dict></plist>
+            """;
+        var info = StoreKitClient.Parse(xml);
+        Assert.Equal("License not found.", info.Error);
     }
 
     [Fact]
-    public void ParseVersionIds_returns_empty_when_absent()
+    public void Parse_ignores_zero_failure_type()
     {
-        Assert.Empty(Ipatool.ParseVersionIds("{\"level\":\"error\",\"message\":\"nope\"}"));
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0"><dict>
+              <key>failureType</key><string>0</string>
+              <key>bundleShortVersionString</key><string>1.2.3</string>
+            </dict></plist>
+            """;
+        var info = StoreKitClient.Parse(xml);
+        Assert.Null(info.Error);
+        Assert.Equal("1.2.3", info.DisplayVersion);
     }
 
     [Fact]
-    public void AppVersion_label_formats_version_date_and_latest()
+    public void Parse_returns_error_on_garbage()
     {
-        var v = new AppVersion("842927320", "26.28.1", new DateTime(2024, 5, 1)) { IsLatest = true };
+        Assert.NotNull(StoreKitClient.Parse("not xml at all").Error);
+    }
+
+    [Fact]
+    public void AppVersion_label_formats_version_and_latest()
+    {
+        var v = new AppVersion("842927320", "26.28.1") { IsLatest = true };
         Assert.Contains("v26.28.1", v.Label);
-        Assert.Contains("2024-05-01", v.Label);
         Assert.Contains("latest", v.Label);
 
-        var unresolved = new AppVersion("999", null, null);
+        var unresolved = new AppVersion("999", null);
         Assert.Contains("id 999", unresolved.Label);
     }
 }

@@ -27,10 +27,6 @@ public sealed class Doctor
     {
         var checks = new List<Check>();
 
-        checks.Add(File.Exists(AppPaths.IpatoolExe)
-            ? new Check(CheckStatus.Ok, "ipatool", new Ipatool().Version())
-            : new Check(CheckStatus.Fail, "ipatool", $"missing at {AppPaths.IpatoolExe}"));
-
         checks.Add(File.Exists(AppPaths.IpadecryptExe)
             ? new Check(CheckStatus.Ok, "ipadecrypt", new Ipadecrypt().Version())
             : new Check(CheckStatus.Fail, "ipadecrypt", $"missing at {AppPaths.IpadecryptExe}"));
