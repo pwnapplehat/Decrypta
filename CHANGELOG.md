@@ -4,6 +4,14 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-07-22
+
+### Fixed
+- The **Load more** button never appeared after loading versions. `CanLoadMore` depends on the
+  busy flag, but the flag flipping back to idle wasn't re-raising the property, so the button's
+  visibility never refreshed. It now shows as soon as a page finishes loading (verified live:
+  10 → 20 of 808, and the *Find version* box correctly locating and selecting v433.0.0).
+
 ## [1.0.3] - 2026-07-22
 
 ### Changed

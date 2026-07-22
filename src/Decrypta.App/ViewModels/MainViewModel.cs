@@ -139,6 +139,9 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _versionsBusy, value))
             {
+                // CanLoadMore depends on !VersionsBusy — re-raise it so the button's
+                // visibility refreshes when a load finishes (busy flips back to false).
+                Raise(nameof(CanLoadMore));
                 LoadVersionsCommand.RaiseCanExecuteChanged();
                 LoadMoreVersionsCommand.RaiseCanExecuteChanged();
                 FindVersionCommand.RaiseCanExecuteChanged();
