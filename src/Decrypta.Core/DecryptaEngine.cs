@@ -1,3 +1,4 @@
+using Decrypta.Core.AppStore;
 using Decrypta.Core.Devices;
 using Decrypta.Core.Tools;
 using Decrypta.Core.Tunnel;
@@ -17,6 +18,7 @@ public sealed class DecryptaEngine
     private readonly DeviceService _devices;
     private readonly Settings _settings;
     private readonly AccountService _accounts;
+    private readonly Ipatool _ipatool = new();
 
     public DecryptaEngine(Settings? settings = null)
     {
@@ -100,6 +102,101 @@ public sealed class DecryptaEngine
         var runner = idec.Decrypt(target, output, flags);
         runner.Output += onOutput;
         return new RunningJob(runner, tunnel);
+    }
+
+    // ---- version listing (for the "pick a specific version" UI) ----
+
+    public sealed record VersionsResult(IReadOnlyList<AppVersion>? Versions, bool Needs2Fa, string? Error);
+
+    /// <summary>
+    /// List an app's App Store versions so the user can pick one. Resolves the target to a
+    /// bundle id, ensures ipatool is signed in as the active account (returns Needs2Fa so the
+    /// caller can prompt for a code), lists every external version id, and resolves the
+    /// human version number + date for the newest <paramref name="resolveNewest"/> only —
+    /// each metadata call hits Apple's private endpoint, which is rate-limited, so we keep it
+    /// small and gently paced. Older versions are still selectable by id.
+    /// </summary>
+    public async Task<VersionsResult> LoadVersionsAsync(
+        string target, string? authCode, int resolveNewest, Action<string>? progress, CancellationToken ct = default)
+    {
+        if (!_ipatool.Exists)
+        {
+            return new VersionsResult(null, false, "ipatool.exe not found under tools\\.");
+        }
+
+        string? bundleId = AppStoreLookup.LooksLikeBundleId(target) ? target.Trim() : null;
+        if (bundleId is null)
+        {
+            var (appId, country) = AppStoreLookup.ParseAppStoreRef(target);
+            if (appId is null)
+            {
+                return new VersionsResult(null, false, "Enter a bundle id, App Store id or link first.");
+            }
+            progress?.Invoke($"resolving App Store id {appId}…\n");
+            bundleId = await AppStoreLookup.LookupBundleIdAsync(
+                appId, [country, string.IsNullOrWhiteSpace(_settings.Storefront) ? null : _settings.Storefront], ct)
+                .ConfigureAwait(false);
+            if (bundleId is null)
+            {
+                return new VersionsResult(null, false, $"Couldn't resolve id {appId} to a bundle id.");
+            }
+        }
+
+        var idec = _accounts.Active();
+        var email = idec?.Config.AppleEmail();
+        var password = idec?.Config.ApplePassword();
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        {
+            return new VersionsResult(null, false, "Sign in first — listing versions needs your Apple ID.");
+        }
+
+        var who = await _ipatool.AuthInfoEmailAsync(ct).ConfigureAwait(false);
+        if (!string.Equals(who, email, StringComparison.OrdinalIgnoreCase))
+        {
+            progress?.Invoke("signing in to ipatool for version listing…\n");
+            var auth = await _ipatool.AuthLoginAsync(email!, password!, authCode, ct).ConfigureAwait(false);
+            if (!auth.Ok)
+            {
+                return auth.Needs2Fa
+                    ? new VersionsResult(null, true, null)
+                    : new VersionsResult(null, false, auth.Error ?? "ipatool sign-in failed");
+            }
+        }
+
+        progress?.Invoke($"listing versions for {bundleId}…\n");
+        IReadOnlyList<string> ids;
+        try
+        {
+            ids = await _ipatool.ListVersionIdsAsync(bundleId, ct).ConfigureAwait(false);
+        }
+        catch (IpatoolException ex)
+        {
+            return new VersionsResult(null, false, ex.Message);
+        }
+        if (ids.Count == 0)
+        {
+            return new VersionsResult([], false, null);
+        }
+
+        var newestFirst = ids.Reverse().ToList(); // Apple returns oldest->newest
+        int toResolve = Math.Min(resolveNewest, newestFirst.Count);
+        var result = new List<AppVersion>(newestFirst.Count);
+        for (int i = 0; i < newestFirst.Count; i++)
+        {
+            string id = newestFirst[i];
+            if (i < toResolve)
+            {
+                progress?.Invoke($"resolving version {i + 1}/{toResolve}…\n");
+                var meta = await _ipatool.GetVersionMetadataAsync(bundleId, id, ct).ConfigureAwait(false);
+                result.Add((meta ?? new AppVersion(id, null, null)) with { IsLatest = i == 0 });
+                await Task.Delay(120, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                result.Add(new AppVersion(id, null, null) { IsLatest = i == 0 });
+            }
+        }
+        return new VersionsResult(result, false, null);
     }
 
     // ---- cache / cleanup ----

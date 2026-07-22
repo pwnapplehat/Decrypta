@@ -112,4 +112,6 @@ public sealed class IpadecryptConfig
     }
 
     public string? AppleEmail() => (Load()["apple"] as JsonObject)?["email"]?.GetValue<string>();
+
+    public string? ApplePassword() => (Load()["apple"] as JsonObject)?["password"]?.GetValue<string>();
 }

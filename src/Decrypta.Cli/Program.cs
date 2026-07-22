@@ -22,6 +22,8 @@ try
             return DoctorCmd(ArgValue(args, "--udid"));
         case "decrypt":
             return await DecryptCmd(args);
+        case "versions":
+            return await VersionsCmd(args);
         case "-h" or "--help" or "help":
             PrintUsage();
             return 0;
@@ -88,8 +90,16 @@ static async Task<int> DecryptCmd(string[] args)
                  ?? throw new DecryptaException("no matching device connected");
     Console.WriteLine($"device: {device.Summary}");
 
+    var extVersionId = ArgValue(args, "--external-version-id");
     var flags = new List<string>();
-    flags.Add(HasFlag(args, "--use-installed") ? "--use-installed" : "--from-appstore");
+    // A pinned historical version can only come from the App Store, never the installed build.
+    bool useInstalled = HasFlag(args, "--use-installed") && string.IsNullOrWhiteSpace(extVersionId);
+    flags.Add(useInstalled ? "--use-installed" : "--from-appstore");
+    if (!string.IsNullOrWhiteSpace(extVersionId))
+    {
+        flags.Add("--external-version-id");
+        flags.Add(extVersionId!);
+    }
     if (settings.VerboseLog)
     {
         flags.Add("--verbose");
@@ -103,6 +113,44 @@ static async Task<int> DecryptCmd(string[] args)
     int rc = await job.Completion;
     Console.WriteLine($"\n[exit {rc}]");
     return rc;
+}
+
+static async Task<int> VersionsCmd(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("usage: decrypta-cli versions <bundle-id|id|url> [--auth-code <code>] [-n <count>]");
+        return 1;
+    }
+    var target = args[1];
+    var settings = Settings.Load();
+    var engine = new DecryptaEngine(settings);
+    int count = int.TryParse(ArgValue(args, "-n"), out var n) ? Math.Clamp(n, 1, 100) : 15;
+
+    var res = await engine.LoadVersionsAsync(
+        target, ArgValue(args, "--auth-code"), count, s => Console.Error.Write(s));
+
+    if (res.Needs2Fa)
+    {
+        Console.Error.WriteLine("Apple needs a 2FA code - re-run with: versions <app> --auth-code <code>");
+        return 2;
+    }
+    if (res.Error is not null)
+    {
+        Console.Error.WriteLine($"error: {res.Error}");
+        return 1;
+    }
+    if (res.Versions is null || res.Versions.Count == 0)
+    {
+        Console.WriteLine("no versions found");
+        return 1;
+    }
+    foreach (var v in res.Versions)
+    {
+        Console.WriteLine($"{v.ExternalId,-12} {v.Label}");
+    }
+    Console.Error.WriteLine($"\nDecrypt one with: decrypta-cli decrypt {target} --external-version-id <id>");
+    return 0;
 }
 
 static string? ArgValue(string[] args, string name)
@@ -121,8 +169,11 @@ static void PrintUsage()
         Usage:
           decrypta-cli devices
           decrypta-cli doctor [--udid <udid>]
-          decrypta-cli decrypt <bundle-id|id|url|path.ipa> [--use-installed] [--udid <udid>] [-o <out.ipa>]
+          decrypta-cli versions <bundle-id|id|url> [--auth-code <code>] [-n <count>]
+          decrypta-cli decrypt <bundle-id|id|url|path.ipa> [--use-installed]
+                       [--external-version-id <id>] [--udid <udid>] [-o <out.ipa>]
 
         Sign-in (Apple ID + 2FA) is done in the Decrypta desktop app.
+        'versions' lists App Store builds so you can pass one to 'decrypt --external-version-id'.
         """);
 }

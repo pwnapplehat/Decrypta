@@ -54,7 +54,7 @@ device) transparently.
 
 | | |
 |---|---|
-| **Decrypt** | Give it a bundle id, App Store id, App Store URL, or a local `.ipa`. Decrypta authenticates, downloads the encrypted package, decrypts it on your device, patches `cryptid`, repackages it, and drops a sideload-ready IPA in your Library. Choose *From App Store* (latest) or *Use installed build*, pin an older version, skip app extensions, or patch the device family. |
+| **Decrypt** | Give it a bundle id, App Store id, App Store URL, or a local `.ipa`. Decrypta authenticates, downloads the encrypted package, decrypts it on your device, patches `cryptid`, repackages it, and drops a sideload-ready IPA in your Library. Choose *From App Store* (latest) or *Use installed build*, **click _Load versions_ to pick any older App Store build from a dropdown** (version number + release date), skip app extensions, or patch the device family. |
 | **Sign in** | One-time Apple ID sign-in with **2FA handled in-app** — when Apple sends the 6-digit code you type it into the console and press Send. Device SSH login (palera1n's `root` / `alpine` by default) is set up in the same step; the USB/Wi-Fi tunnel is wired automatically, so you never enter an IP. **Multiple Apple IDs** are supported — add/switch/remove accounts (each isolated), with a clear signed-in indicator in the header. |
 | **Library** | Every decrypted IPA you've produced, newest first, with size and reveal-in-Explorer. Pick the **output folder** here or in Settings; the encrypted-download **cache is kept inside that folder** (nothing in system temp) and a one-click **Clean** wipes cached/partial downloads completely — a failed or cancelled decrypt never leaves anything behind. |
 | **Doctor** | One-click end-to-end health check: bundled tools, Apple Mobile Device Service, your connected device, the SSH tunnel (shows the live OpenSSH banner), and sign-in state. |
@@ -102,8 +102,9 @@ self-contained, per-user install — no admin, no .NET runtime needed. Each rele
    Device Service, your device, the SSH tunnel and sign-in state.
 2. **Sign in** — enter your Apple ID and the device SSH login. When Apple sends a 6-digit
    code, type it into the **response** box and press *Send*. One-time setup.
-3. **Decrypt** — type an app, choose *From App Store* or *Use installed build*, and click
-   *Decrypt*. Progress streams live; the finished IPA lands in your **Library**.
+3. **Decrypt** — type an app, choose *From App Store* or *Use installed build* (or click
+   *Load versions* to pin a specific older build), and click *Decrypt*. Progress streams live;
+   the finished IPA lands in your **Library**.
 
 ## Command line
 
@@ -112,7 +113,9 @@ A headless companion (`decrypta-cli.exe`) ships alongside the app for scripting:
 ```powershell
 decrypta-cli devices
 decrypta-cli doctor
+decrypta-cli versions com.burbn.instagram            # list App Store builds (id + version + date)
 decrypta-cli decrypt com.burbn.instagram
+decrypta-cli decrypt com.burbn.instagram --external-version-id <id>   # pin a specific version
 decrypta-cli decrypt 389801252 --use-installed --udid <udid> -o out.ipa
 ```
 

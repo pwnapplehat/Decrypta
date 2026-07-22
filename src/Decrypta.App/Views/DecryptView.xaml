@@ -44,22 +44,55 @@
           <CheckBox Content="verbose log" IsChecked="{Binding Verbose}" Margin="0,0,22,6"/>
         </WrapPanel>
 
-        <Grid Margin="0,8,0,0">
+        <!-- Version picker: load the App Store version history and pick one (or keep latest). -->
+        <Grid Margin="0,10,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="190"/>
+            <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="120"/>
           </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="external version id" Style="{StaticResource Text.FieldLabel}"
+          <TextBlock Grid.Column="0" Text="Version" Style="{StaticResource Text.FieldLabel}"
                      Margin="0,0,10,0" VerticalAlignment="Center"/>
-          <ui:TextBox Grid.Column="1" PlaceholderText="optional"
-                      Text="{Binding ExtVersionId, UpdateSourceTrigger=PropertyChanged}"/>
-          <TextBlock Grid.Column="2" Text="storefront" Style="{StaticResource Text.FieldLabel}"
+          <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableVersions}" SelectedItem="{Binding SelectedVersion}"
+                    VerticalAlignment="Center" MinWidth="240"
+                    ToolTip="Load versions first, then pick one. Latest is used by default.">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Label}"/>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <ui:Button Grid.Column="2" Content="Load versions" Appearance="Secondary" Margin="8,0,0,0"
+                     Command="{Binding LoadVersionsCommand}"/>
+          <TextBlock Grid.Column="3" Text="storefront" Style="{StaticResource Text.FieldLabel}"
                      Margin="20,0,10,0" VerticalAlignment="Center"/>
-          <ui:TextBox Grid.Column="3" PlaceholderText="e.g. US"
+          <ui:TextBox Grid.Column="4" PlaceholderText="e.g. US"
                       Text="{Binding Storefront, UpdateSourceTrigger=PropertyChanged}"/>
         </Grid>
+
+        <!-- 2FA prompt shown only if ipatool needs a code to list versions (its own one-time sign-in). -->
+        <Grid Margin="0,8,0,0" Visibility="{Binding VersionsNeed2Fa, Converter={StaticResource BoolToVis}}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="180"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="Apple sent a code" Foreground="{StaticResource Brush.Fuchsia}"
+                     FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <ui:TextBox Grid.Column="1" PlaceholderText="6-digit code"
+                      Text="{Binding Versions2FaCode, UpdateSourceTrigger=PropertyChanged}"/>
+          <ui:Button Grid.Column="2" Content="Submit &amp; load" Appearance="Primary" Margin="8,0,0,0"
+                     Command="{Binding SubmitVersionCodeCommand}"/>
+        </Grid>
+
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+          <TextBlock Text="advanced: external version id" Style="{StaticResource Text.FieldLabel}"
+                     VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <ui:TextBox Width="200" PlaceholderText="optional — set by the picker"
+                      Text="{Binding ExtVersionId, UpdateSourceTrigger=PropertyChanged}"/>
+        </StackPanel>
 
         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
           <ui:Button Content="Decrypt" Appearance="Primary" MinWidth="140"

@@ -134,6 +134,47 @@ public class AppStoreLookupTests
     }
 }
 
+public class IpatoolVersionParsingTests
+{
+    [Fact]
+    public void ParseVersionIds_reads_ipatool_json_log_line()
+    {
+        // ipatool --format json emits zerolog-style JSON lines.
+        const string stdout =
+            "{\"level\":\"info\",\"externalVersionIdentifiers\":[\"630253062\",\"836887817\",\"842927320\"]," +
+            "\"bundleID\":\"com.apple.TestFlight\",\"success\":true}\n";
+        var ids = Ipatool.ParseVersionIds(stdout);
+        Assert.Equal(new[] { "630253062", "836887817", "842927320" }, ids);
+    }
+
+    [Fact]
+    public void ParseVersionIds_handles_numeric_array_and_noise_lines()
+    {
+        const string stdout =
+            "starting\n{\"externalVersionIdentifiers\":[111,222],\"success\":true}\ndone\n";
+        var ids = Ipatool.ParseVersionIds(stdout);
+        Assert.Equal(new[] { "111", "222" }, ids);
+    }
+
+    [Fact]
+    public void ParseVersionIds_returns_empty_when_absent()
+    {
+        Assert.Empty(Ipatool.ParseVersionIds("{\"level\":\"error\",\"message\":\"nope\"}"));
+    }
+
+    [Fact]
+    public void AppVersion_label_formats_version_date_and_latest()
+    {
+        var v = new AppVersion("842927320", "26.28.1", new DateTime(2024, 5, 1)) { IsLatest = true };
+        Assert.Contains("v26.28.1", v.Label);
+        Assert.Contains("2024-05-01", v.Label);
+        Assert.Contains("latest", v.Label);
+
+        var unresolved = new AppVersion("999", null, null);
+        Assert.Contains("id 999", unresolved.Label);
+    }
+}
+
 public class AccountServiceTests
 {
     [Fact]

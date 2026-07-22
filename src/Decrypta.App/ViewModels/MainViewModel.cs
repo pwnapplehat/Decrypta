@@ -34,6 +34,8 @@ public sealed class MainViewModel : ObservableObject
         AutoUpdateCheck = _settings.AutoUpdateCheck;
 
         DecryptCommand = new RelayCommand(() => _ = RunDecryptAsync(), () => !IsBusy);
+        LoadVersionsCommand = new RelayCommand(() => _ = RunLoadVersionsAsync(null), () => !VersionsBusy);
+        SubmitVersionCodeCommand = new RelayCommand(() => _ = RunLoadVersionsAsync(Versions2FaCode));
         SignInCommand = new RelayCommand(() => _ = RunSignInAsync(), () => !IsBusy);
         NewAccountCommand = new RelayCommand(NewAccount, () => !IsBusy);
         SwitchAccountCommand = new RelayCommand(SwitchAccount, () => !IsBusy);
@@ -104,6 +106,34 @@ public sealed class MainViewModel : ObservableObject
 
     private string _decryptLogText = "";
     public string DecryptLogText { get => _decryptLogText; set => SetProperty(ref _decryptLogText, value); }
+
+    // ---- version picker ----
+    public ObservableCollection<Decrypta.Core.AppStore.AppVersion> AvailableVersions { get; } = [];
+
+    private Decrypta.Core.AppStore.AppVersion? _selectedVersion;
+    public Decrypta.Core.AppStore.AppVersion? SelectedVersion
+    {
+        get => _selectedVersion;
+        set
+        {
+            if (SetProperty(ref _selectedVersion, value))
+            {
+                // Picking a specific (non-latest) version pins its external id; latest = default (empty).
+                ExtVersionId = (value is null || value.IsLatest) ? "" : value.ExternalId;
+            }
+        }
+    }
+
+    public bool HasVersions => AvailableVersions.Count > 0;
+
+    private bool _versionsBusy;
+    public bool VersionsBusy { get => _versionsBusy; set => SetProperty(ref _versionsBusy, value); }
+
+    private bool _versionsNeed2Fa;
+    public bool VersionsNeed2Fa { get => _versionsNeed2Fa; set => SetProperty(ref _versionsNeed2Fa, value); }
+
+    private string _versions2FaCode = "";
+    public string Versions2FaCode { get => _versions2FaCode; set => SetProperty(ref _versions2FaCode, value); }
 
     // ---- sign-in tab ----
     private string _email = "";
@@ -197,6 +227,8 @@ public sealed class MainViewModel : ObservableObject
     public string Status { get => _status; set => SetProperty(ref _status, value); }
 
     public RelayCommand DecryptCommand { get; }
+    public RelayCommand LoadVersionsCommand { get; }
+    public RelayCommand SubmitVersionCodeCommand { get; }
     public RelayCommand SignInCommand { get; }
     public RelayCommand NewAccountCommand { get; }
     public RelayCommand SwitchAccountCommand { get; }
@@ -613,7 +645,9 @@ public sealed class MainViewModel : ObservableObject
         {
             flags.Add("--verbose");
         }
-        flags.Add(SourceFromAppStore ? "--from-appstore" : "--use-installed");
+        // A pinned historical version can only come from the App Store (never the installed build).
+        bool pinnedVersion = !string.IsNullOrWhiteSpace(ExtVersionId);
+        flags.Add(SourceFromAppStore || pinnedVersion ? "--from-appstore" : "--use-installed");
         if (SkipAppex)
         {
             flags.Add("--skip-appex");
@@ -668,6 +702,74 @@ public sealed class MainViewModel : ObservableObject
         {
             _decryptJob = null;
             IsBusy = false;
+        }
+    }
+
+    // ===================================================================
+    //  Version picker
+    // ===================================================================
+
+    private async Task RunLoadVersionsAsync(string? authCode)
+    {
+        if (VersionsBusy)
+        {
+            return;
+        }
+        var target = DecryptTarget.Trim();
+        if (string.IsNullOrEmpty(target))
+        {
+            Status = "enter an app first (bundle id / App Store id / link)";
+            return;
+        }
+        if (DecryptaEngine.IsLocalIpa(target))
+        {
+            Status = "a local .ipa has no App Store versions to list";
+            return;
+        }
+
+        VersionsBusy = true;
+        LoadVersionsCommand.RaiseCanExecuteChanged();
+        Status = "loading versions…";
+        try
+        {
+            var res = await _engine.LoadVersionsAsync(
+                target, authCode, resolveNewest: 15,
+                progress: s => _dispatcher.BeginInvoke(() => Status = s.Trim()));
+
+            if (res.Needs2Fa)
+            {
+                VersionsNeed2Fa = true;
+                Status = "enter the 6-digit code Apple sent, then Load";
+                return;
+            }
+            VersionsNeed2Fa = false;
+            Versions2FaCode = "";
+
+            if (res.Error is not null)
+            {
+                Status = res.Error;
+                return;
+            }
+
+            AvailableVersions.Clear();
+            foreach (var v in res.Versions!)
+            {
+                AvailableVersions.Add(v);
+            }
+            Raise(nameof(HasVersions));
+            SelectedVersion = AvailableVersions.FirstOrDefault(v => v.IsLatest) ?? AvailableVersions.FirstOrDefault();
+            Status = AvailableVersions.Count > 0
+                ? $"{AvailableVersions.Count} version(s) — pick one (or keep latest)"
+                : "no versions returned";
+        }
+        catch (Exception ex)
+        {
+            Status = $"versions error: {ex.Message}";
+        }
+        finally
+        {
+            VersionsBusy = false;
+            LoadVersionsCommand.RaiseCanExecuteChanged();
         }
     }
 

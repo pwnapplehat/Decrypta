@@ -4,6 +4,22 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-07-22
+
+### Added
+- **Pick a specific version to decrypt.** The Decrypt tab has a new **Version** dropdown and a
+  **Load versions** button: it lists the app's App Store version history and lets you choose any
+  past build (or keep *latest*, the default). Selecting a version pins its identifier and forces
+  the App Store download path, since a historical build can't come from the installed copy. The
+  raw identifier is still editable under *advanced: external version id*.
+- Version discovery uses the bundled `ipatool`, which keeps its own credential store, so it does a
+  one-time sign-in with your active Apple ID the first time you load versions. If Apple asks for a
+  2FA code, an inline prompt appears right under the picker — enter it and press **Submit & load**.
+
+### Notes
+- Only the newest 15 versions are resolved to human-readable version numbers and dates to stay
+  well within Apple's rate limits; older builds remain selectable by their identifier.
+
 ## [1.0.1] - 2026-07-21
 
 ### Fixed
