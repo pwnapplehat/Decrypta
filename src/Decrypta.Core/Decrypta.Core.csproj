@@ -5,4 +5,8 @@
     <RootNamespace>Decrypta.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Telegram.Bot" Version="22.10.2" />
+  </ItemGroup>
+
 </Project>

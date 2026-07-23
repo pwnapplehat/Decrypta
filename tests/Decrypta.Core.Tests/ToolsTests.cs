@@ -211,6 +211,21 @@ public class StoreKitParsingTests
     }
 }
 
+public class OutputNamingTests
+{
+    [Theory]
+    [InlineData("com.burbn.instagram_439.0.0.decrypted.ipa", "com.burbn.instagram_439.0.0.ipa")]
+    [InlineData("com.x.y_1.2.3.DECRYPTED.IPA", "com.x.y_1.2.3.ipa")]
+    public void TidyDecryptedName_strips_decrypted_suffix(string input, string expected)
+        => Assert.Equal(expected, DecryptaEngine.TidyDecryptedName(input));
+
+    [Theory]
+    [InlineData("already_clean_1.0.ipa")]
+    [InlineData("weird.name.ipa")]
+    public void TidyDecryptedName_leaves_other_names_untouched(string input)
+        => Assert.Equal(input, DecryptaEngine.TidyDecryptedName(input));
+}
+
 public class AccountServiceTests
 {
     [Fact]

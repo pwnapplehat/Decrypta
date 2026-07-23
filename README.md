@@ -55,12 +55,13 @@ device) transparently.
 
 | | |
 |---|---|
-| **Decrypt** | Give it a bundle id, App Store id, App Store URL, or a local `.ipa`. Decrypta authenticates, downloads the encrypted package, decrypts it on your device, patches `cryptid`, repackages it, and drops a sideload-ready IPA in your Library. Choose *From App Store* (latest) or *Use installed build*, **click _Load versions_ to pick any older App Store build from a dropdown** (version number + release date), skip app extensions, or patch the device family. |
+| **Decrypt** | Give it a bundle id, App Store id, App Store URL, or a local `.ipa`. Decrypta authenticates, downloads the encrypted package, decrypts it on your device, patches `cryptid`, repackages it, and drops a sideload-ready IPA in your Library — always named **`<bundleId>_<version>.ipa`**. Choose *From App Store* (latest) or *Use installed build*, **click _Load versions_ to pick any older App Store build from a dropdown**, skip app extensions, or patch the device family. A dialog confirms when each decrypt finishes. |
+| **Telegram bot** | **Run decryptions from your phone.** Keep Decrypta open with a device connected, then use a Telegram bot to `/decrypt`, `/versions`, check `/status`, `/devices`, and `/library` — the finished IPA is sent back to the chat (or its PC path if it's over Telegram's ~50 MB limit). Paste a token from `@BotFather`, and pair once with a code shown in the app; only paired chats can control it. |
 | **Sign in** | One-time Apple ID sign-in with **2FA handled in-app** — when Apple sends the 6-digit code you type it into the console and press Send. Device SSH login (palera1n's `root` / `alpine` by default) is set up in the same step; the USB/Wi-Fi tunnel is wired automatically, so you never enter an IP. **Multiple Apple IDs** are supported — add/switch/remove accounts (each isolated), with a clear signed-in indicator in the header. |
 | **Library** | Every decrypted IPA you've produced, newest first, with size and reveal-in-Explorer. Pick the **output folder** here or in Settings; the encrypted-download **cache is kept inside that folder** (nothing in system temp) and a one-click **Clean** wipes cached/partial downloads completely — a failed or cancelled decrypt never leaves anything behind. |
 | **Doctor** | One-click end-to-end health check: bundled tools, Apple Mobile Device Service, your connected device, the SSH tunnel (shows the live OpenSSH banner), and sign-in state. |
 | **Auto-update** | Checks GitHub for a newer release on launch (opt-out in Settings). Updates download only when you click Install and are **SHA-256-verified** against the release's `SHA256SUMS.txt` before running. |
-| **CLI** | `decrypta-cli` — `devices` / `doctor` / `decrypt` for scripting; reuses the app's sign-in. |
+| **CLI** | `decrypta-cli` — `devices` / `doctor` / `versions` / `decrypt` for scripting; reuses the app's sign-in. |
 | **Native look** | Windows 11 Fluent design end-to-end: a **Mica** backdrop, native NavigationView, Fluent cards/controls/title bar via the MIT-licensed [WPF UI](https://github.com/lepoco/wpfui) library, with a violet→fuchsia brand. |
 
 <div align="center">
@@ -104,8 +105,23 @@ self-contained, per-user install — no admin, no .NET runtime needed. Each rele
 2. **Sign in** — enter your Apple ID and the device SSH login. When Apple sends a 6-digit
    code, type it into the **response** box and press *Send*. One-time setup.
 3. **Decrypt** — type an app, choose *From App Store* or *Use installed build* (or click
-   *Load versions* to pin a specific older build), and click *Decrypt*. Progress streams live;
-   the finished IPA lands in your **Library**.
+   *Load versions* to pin a specific older build), and click *Decrypt*. Progress streams live,
+   a dialog confirms completion, and the finished IPA lands in your **Library** as
+   `<bundleId>_<version>.ipa`.
+
+## Control from your phone (Telegram)
+
+Run decryptions from Telegram while your PC stays open with a device connected — handy when
+you're away from the machine.
+
+1. In Telegram, message **[@BotFather](https://t.me/BotFather)** → `/newbot` → copy the token.
+2. Decrypta → **Telegram** tab → paste the token, tick **Enable Telegram bot**, click **Apply**.
+3. Open your new bot, press **Start**, and send **`/pair <code>`** using the code shown in the app.
+4. Now control it from anywhere: `/decrypt <app>`, `/versions <app>`, `/status`, `/devices`,
+   `/library`, `/cancel`. The decrypted IPA is sent to the chat (or its PC path if it exceeds
+   Telegram's ~50 MB bot upload limit).
+
+Only chats that complete pairing can control the bot; the token and allow-list are stored locally.
 
 ## Command line
 
@@ -114,12 +130,13 @@ A headless companion (`decrypta-cli.exe`) ships alongside the app for scripting:
 ```powershell
 decrypta-cli devices
 decrypta-cli doctor
-decrypta-cli versions com.burbn.instagram            # list App Store builds (id + version + date)
+decrypta-cli versions com.burbn.instagram            # list App Store builds (id + version)
 decrypta-cli decrypt com.burbn.instagram
 decrypta-cli decrypt com.burbn.instagram --external-version-id <id>   # pin a specific version
-decrypta-cli decrypt 389801252 --use-installed --udid <udid> -o out.ipa
+decrypta-cli decrypt 389801252 --use-installed --udid <udid>
 ```
 
+Output is saved to your configured folder as `<bundleId>_<version>.ipa`.
 Sign-in (Apple ID + 2FA) is done once in the desktop app; the CLI reuses it.
 
 ## Building from source

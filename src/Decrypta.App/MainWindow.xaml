@@ -142,6 +142,11 @@
               <ui:SymbolIcon Symbol="Apps24"/>
             </ui:NavigationViewItem.Icon>
           </ui:NavigationViewItem>
+          <ui:NavigationViewItem Content="Telegram" TargetPageType="{x:Type views:TelegramView}">
+            <ui:NavigationViewItem.Icon>
+              <ui:SymbolIcon Symbol="Bot24"/>
+            </ui:NavigationViewItem.Icon>
+          </ui:NavigationViewItem>
         </ui:NavigationView.MenuItems>
         <ui:NavigationView.FooterMenuItems>
           <ui:NavigationViewItem Content="Doctor" TargetPageType="{x:Type views:DoctorView}">

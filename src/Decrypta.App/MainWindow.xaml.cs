@@ -16,6 +16,7 @@ public partial class MainWindow : FluentWindow
         typeof(DecryptView),
         typeof(SignInView),
         typeof(LibraryView),
+        typeof(TelegramView),
         typeof(DoctorView),
         typeof(SettingsView),
     ];
@@ -35,6 +36,7 @@ public partial class MainWindow : FluentWindow
         {
             NavigateToTab(0);
             _viewModel.StartDevicePolling();
+            _viewModel.StartTelegramOnLaunch();
         };
     }
 
@@ -97,5 +99,11 @@ public partial class MainWindow : FluentWindow
         {
             RootNavigation.Navigate(TabPages[tab]);
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _viewModel.ShutdownTelegram();
+        base.OnClosed(e);
     }
 }

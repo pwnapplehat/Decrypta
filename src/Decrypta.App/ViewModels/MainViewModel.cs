@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject
     private RunningJob? _signInJob;
     private RunningJob? _decryptJob;
     private HashSet<string> _lastUdids = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Decrypta.Core.TelegramBot.TelegramBotService _telegram = new();
 
     public MainViewModel()
     {
@@ -54,6 +55,12 @@ public sealed class MainViewModel : ObservableObject
         InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync(), () => !_updateInstalling);
         ViewUpdateCommand = new RelayCommand(ViewUpdate);
         DismissUpdateCommand = new RelayCommand(() => UpdateBannerVisible = false);
+
+        _telegramEnabled = _settings.TelegramEnabled;
+        _telegramBotToken = _settings.TelegramBotToken;
+        ApplyTelegramCommand = new RelayCommand(() => _ = ApplyTelegramAsync());
+        CopyPairCodeCommand = new RelayCommand(CopyPairCode);
+        _telegram.Log += OnTelegramLog;
 
         RefreshAccounts();
         _ = RefreshCacheSizeAsync();
@@ -268,6 +275,104 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SaveSettingsCommand { get; }
     public RelayCommand CleanCacheCommand { get; }
     public RelayCommand CancelCommand { get; }
+    public RelayCommand ApplyTelegramCommand { get; }
+    public RelayCommand CopyPairCodeCommand { get; }
+
+    // ===================================================================
+    //  Telegram bot  (control decryption from your phone)
+    // ===================================================================
+
+    private bool _telegramEnabled;
+    public bool TelegramEnabled { get => _telegramEnabled; set => SetProperty(ref _telegramEnabled, value); }
+
+    private string _telegramBotToken = "";
+    public string TelegramBotToken { get => _telegramBotToken; set => SetProperty(ref _telegramBotToken, value); }
+
+    private bool _botRunning;
+    public bool BotRunning { get => _botRunning; set => SetProperty(ref _botRunning, value); }
+
+    private string _telegramStatus = "stopped";
+    public string TelegramStatus { get => _telegramStatus; set => SetProperty(ref _telegramStatus, value); }
+
+    private string _telegramPairCode = "";
+    public string TelegramPairCode { get => _telegramPairCode; set => SetProperty(ref _telegramPairCode, value); }
+
+    private string _telegramLogText = "";
+    public string TelegramLogText { get => _telegramLogText; set => SetProperty(ref _telegramLogText, value); }
+
+    /// <summary>Started from the shell once the window is up (if enabled + token present).</summary>
+    public void StartTelegramOnLaunch()
+    {
+        if (_settings.TelegramEnabled && !string.IsNullOrWhiteSpace(_settings.TelegramBotToken))
+        {
+            _ = StartTelegramAsync();
+        }
+    }
+
+    /// <summary>Stop the bot poller cleanly when the app closes.</summary>
+    public void ShutdownTelegram() => _telegram.Stop();
+
+    private async Task ApplyTelegramAsync()
+    {
+        _settings.TelegramEnabled = TelegramEnabled;
+        _settings.TelegramBotToken = TelegramBotToken.Trim();
+        _settings.Save();
+
+        if (TelegramEnabled && !string.IsNullOrWhiteSpace(_settings.TelegramBotToken))
+        {
+            await StartTelegramAsync();
+        }
+        else
+        {
+            _telegram.Stop();
+            TelegramPairCode = "";
+            UpdateTelegramStatus();
+            AppendTelegramLog(TelegramEnabled ? "enter a bot token, then Apply." : "bot disabled.");
+        }
+    }
+
+    private async Task StartTelegramAsync()
+    {
+        AppendTelegramLog("starting bot…");
+        bool ok = await _telegram.StartAsync();
+        // Continuation resumes on the UI thread (caller is UI-bound), so update directly.
+        UpdateTelegramStatus();
+        TelegramPairCode = ok ? _telegram.PairCode : "";
+    }
+
+    private void UpdateTelegramStatus()
+    {
+        BotRunning = _telegram.Running;
+        TelegramStatus = _telegram.Running ? $"@{_telegram.BotUsername} online" : "stopped";
+    }
+
+    private void OnTelegramLog(string line) => _dispatcher.BeginInvoke(() =>
+    {
+        AppendTelegramLog(line);
+        UpdateTelegramStatus();
+        if (_telegram.Running && !string.IsNullOrEmpty(_telegram.PairCode))
+        {
+            TelegramPairCode = _telegram.PairCode;
+        }
+    });
+
+    private void AppendTelegramLog(string line)
+    {
+        var stamp = DateTime.Now.ToString("HH:mm:ss");
+        TelegramLogText = ($"[{stamp}] {line}\n" + TelegramLogText);
+        if (TelegramLogText.Length > 4000)
+        {
+            TelegramLogText = TelegramLogText[..4000];
+        }
+    }
+
+    private void CopyPairCode()
+    {
+        if (!string.IsNullOrEmpty(TelegramPairCode))
+        {
+            try { Clipboard.SetText(TelegramPairCode); } catch (Exception) { /* clipboard busy */ }
+        }
+    }
 
     // ===================================================================
     //  Device discovery
@@ -640,81 +745,32 @@ public sealed class MainViewModel : ObservableObject
         DecryptLogText = "";
         IsBusy = true;
 
-        // "Use installed build" only works when ipadecrypt gets a bundle id (it matches the
-        // installed app by bundle id). If the user pasted an App Store link/id, resolve it to
-        // the bundle id first via Apple's public lookup - otherwise ipadecrypt would fall back
-        // to downloading from the App Store, ignoring the toggle.
-        if (!SourceFromAppStore && !DecryptaEngine.IsLocalIpa(target) &&
-            !Decrypta.Core.AppStore.AppStoreLookup.LooksLikeBundleId(target))
-        {
-            var (appId, country) = Decrypta.Core.AppStore.AppStoreLookup.ParseAppStoreRef(target);
-            if (appId is not null)
-            {
-                Status = $"resolving App Store id {appId}…";
-                var countries = new[] { country, string.IsNullOrWhiteSpace(Storefront) ? null : Storefront.Trim() };
-                var bundleId = await Decrypta.Core.AppStore.AppStoreLookup.LookupBundleIdAsync(appId, countries);
-                if (bundleId is not null)
-                {
-                    AppendDecrypt($"[resolve] App Store id {appId} -> {bundleId} (using installed build)\n");
-                    target = bundleId;
-                }
-                else
-                {
-                    AppendDecrypt($"[resolve] couldn't resolve id {appId} to a bundle id — it will be fetched from the App Store instead. Tip: paste the bundle id directly to use the installed build.\n");
-                }
-            }
-        }
-
-        var flags = new List<string>();
-        if (Verbose)
-        {
-            flags.Add("--verbose");
-        }
-        // A pinned historical version can only come from the App Store (never the installed build).
-        bool pinnedVersion = !string.IsNullOrWhiteSpace(ExtVersionId);
-        flags.Add(SourceFromAppStore || pinnedVersion ? "--from-appstore" : "--use-installed");
-        if (SkipAppex)
-        {
-            flags.Add("--skip-appex");
-        }
-        if (PatchDeviceType)
-        {
-            flags.Add("--patch-device-type");
-        }
-        if (!string.IsNullOrWhiteSpace(ExtVersionId))
-        {
-            flags.Add("--external-version-id");
-            flags.Add(ExtVersionId.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(Storefront))
-        {
-            flags.Add("--storefront");
-            flags.Add(Storefront.Trim());
-        }
-
-        string? output = DecryptaEngine.IsLocalIpa(target)
-            ? null
-            : DecryptaEngine.DefaultOutputPath(OutputDirectory, target);
+        var req = new DecryptaEngine.DecryptRequest(
+            Target: target,
+            FromAppStore: SourceFromAppStore,
+            SkipAppex: SkipAppex,
+            PatchDeviceType: PatchDeviceType,
+            Verbose: Verbose,
+            ExternalVersionId: string.IsNullOrWhiteSpace(ExtVersionId) ? null : ExtVersionId.Trim(),
+            Storefront: string.IsNullOrWhiteSpace(Storefront) ? null : Storefront.Trim());
 
         Status = $"decrypting {target}…";
         try
         {
-            _decryptJob = _engine.StartDecrypt(SelectedDevice, target, output, flags, AppendDecrypt);
-            int rc = await _decryptJob.Completion;
-            AppendDecrypt($"\n[exit {rc}]\n");
-            Status = rc == 0 ? "decrypt complete" : $"decrypt failed (exit {rc})";
-            if (rc == 0)
+            var result = await _engine.DecryptAsync(
+                SelectedDevice, req, AppendDecrypt, job => _decryptJob = job);
+            AppendDecrypt($"\n[exit {result.ExitCode}]\n");
+            if (result.Ok)
             {
+                AppendDecrypt($"[saved] {result.OutputPath}\n");
+                Status = $"decrypt complete — {result.FileName}";
                 RefreshLibrary();
+                ShowDecryptComplete(true, result.FileName!, result.Bytes, result.OutputPath);
             }
             else
             {
-                // An interrupted/failed decrypt can leave a partial .tmp download — clear it.
-                long freed = await Task.Run(() => _engine.CleanPartials());
-                if (freed > 0)
-                {
-                    AppendDecrypt($"[cache] removed {HumanSize(freed)} of partial download\n");
-                }
+                Status = $"decrypt failed (exit {result.ExitCode})";
+                ShowDecryptComplete(false, target, 0, null);
             }
             await RefreshCacheSizeAsync();
         }
@@ -722,12 +778,49 @@ public sealed class MainViewModel : ObservableObject
         {
             AppendDecrypt($"\nerror: {ex.Message}\n");
             Status = ex.Message;
+            ShowDecryptComplete(false, target, 0, null, ex.Message);
         }
         finally
         {
             _decryptJob = null;
             IsBusy = false;
         }
+    }
+
+    /// <summary>Themed dialog shown when a decrypt finishes, so success/failure is obvious without
+    /// reading the log. On success, offers to open the output folder.</summary>
+    private void ShowDecryptComplete(bool ok, string name, long bytes, string? path, string? error = null)
+    {
+        _dispatcher.BeginInvoke(async () =>
+        {
+            var box = new Wpf.Ui.Controls.MessageBox
+            {
+                Title = ok ? "Decryption complete" : "Decryption failed",
+                Content = ok
+                    ? $"{name}\n{HumanSize(bytes)}\n\nSaved to your Library folder."
+                    : (string.IsNullOrWhiteSpace(error)
+                        ? "The decrypt didn't finish. Check the log for details."
+                        : $"The decrypt didn't finish:\n\n{error}"),
+                CloseButtonText = ok ? "Close" : "OK",
+                MaxWidth = 480,
+            };
+            if (ok)
+            {
+                box.PrimaryButtonText = "Open folder";
+            }
+            try
+            {
+                var result = await box.ShowDialogAsync();
+                if (ok && result == Wpf.Ui.Controls.MessageBoxResult.Primary)
+                {
+                    OpenOutputFolder();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // a dialog is already open; ignore
+            }
+        });
     }
 
     // ===================================================================

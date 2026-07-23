@@ -22,6 +22,12 @@ public sealed class Settings
     public string? ActiveAccountSlug { get; set; }
     public string? LastUdid { get; set; }
 
+    // ---- Telegram bot (control Decrypta from your phone) ----
+    public bool TelegramEnabled { get; set; }
+    public string TelegramBotToken { get; set; } = string.Empty;
+    /// <summary>Chat ids allowed to control the bot (populated by /pair). Empty = nobody yet.</summary>
+    public List<long> TelegramAllowedChatIds { get; set; } = [];
+
     public static Settings Load()
     {
         try

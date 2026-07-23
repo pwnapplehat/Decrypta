@@ -1,0 +1,68 @@
+<UserControl x:Class="Decrypta.App.Views.TelegramView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Grid Margin="28,20,28,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Telegram bot" Style="{StaticResource Text.Title}"/>
+      <TextBlock Style="{StaticResource Text.Subtitle}" Margin="0,6,0,0"
+                 Text="Control decryption from your phone. Keep Decrypta running with a device connected, then use the bot in Telegram — list versions, decrypt, and get the IPA, without touching Windows."/>
+    </StackPanel>
+
+    <!-- Setup -->
+    <ui:Card Grid.Row="1" Margin="0,16,0,0">
+      <StackPanel>
+        <ui:ToggleSwitch Content="Enable Telegram bot" IsChecked="{Binding TelegramEnabled}"/>
+
+        <TextBlock Text="Bot token" Style="{StaticResource Text.FieldLabel}" Margin="0,14,0,4"/>
+        <ui:TextBox PlaceholderText="e.g. 8123456789:AAE… (from @BotFather)"
+                    Text="{Binding TelegramBotToken, UpdateSourceTrigger=PropertyChanged}"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="Create a bot once: open @BotFather in Telegram → send /newbot → follow the prompts → copy the token here. The token is stored locally on this PC only."/>
+
+        <StackPanel Orientation="Horizontal" Margin="0,16,0,0" VerticalAlignment="Center">
+          <ui:Button Content="Apply" Appearance="Primary" MinWidth="120" Command="{Binding ApplyTelegramCommand}"/>
+          <Ellipse Width="9" Height="9" Margin="18,0,7,0" VerticalAlignment="Center"
+                   Fill="{Binding BotRunning, Converter={StaticResource BoolToBrush}}"/>
+          <TextBlock Text="{Binding TelegramStatus}" VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13"/>
+        </StackPanel>
+      </StackPanel>
+    </ui:Card>
+
+    <!-- Pairing (shown once the bot is online) -->
+    <ui:Card Grid.Row="2" Margin="0,14,0,0"
+             Visibility="{Binding BotRunning, Converter={StaticResource BoolToVis}}">
+      <StackPanel>
+        <TextBlock Text="Pair your phone" Style="{StaticResource Text.FieldLabel}"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,4,0,10" TextWrapping="Wrap"
+                   Text="Open your bot in Telegram, press Start, then send the command below. Only paired chats can control the bot."/>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Background="{StaticResource Brush.Inset}" CornerRadius="8" Padding="14,8">
+            <TextBlock VerticalAlignment="Center" FontFamily="Consolas" FontSize="18" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+              <Run Text="/pair "/><Run Text="{Binding TelegramPairCode}"/>
+            </TextBlock>
+          </Border>
+          <ui:Button Content="Copy" Appearance="Secondary" Margin="10,0,0,0" Command="{Binding CopyPairCodeCommand}"/>
+        </StackPanel>
+      </StackPanel>
+    </ui:Card>
+
+    <!-- Activity log -->
+    <ui:Card Grid.Row="3" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="8">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <TextBlock Text="{Binding TelegramLogText}" FontFamily="Consolas" FontSize="12"
+                   TextWrapping="Wrap" Padding="8"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+      </ScrollViewer>
+    </ui:Card>
+  </Grid>
+</UserControl>

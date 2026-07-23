@@ -4,6 +4,26 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-23
+
+### Added
+- **Telegram bot — drive decryption from your phone.** New **Telegram** tab: paste a bot token
+  from `@BotFather`, enable it, and control Decrypta from Telegram while the PC stays open with a
+  device connected. Commands: `/status`, `/devices`, `/versions <app>`, `/decrypt <app>
+  [--installed] [--skip-appex] [--version <id>]`, `/cancel`, `/library`, `/help`. Decrypt progress
+  streams to the chat and the finished IPA is sent back (or, if it's over Telegram's ~50 MB bot
+  limit, you get its size and PC path). Access is locked down: only chats that complete a one-time
+  `/pair <code>` (the code is shown in the app) can control the bot; the token and allow-list stay
+  in the local settings file.
+- **Completion dialog after a decrypt.** Instead of only an `[exit 0]` line in the log, a themed
+  dialog now reports success (with the file name + size and an *Open folder* button) or failure.
+
+### Changed
+- **Output IPAs are always named `<bundleId>_<version>.ipa`** (e.g. `com.burbn.instagram_439.0.0.ipa`),
+  regardless of whether you entered a bundle id, a numeric App Store id, or a link. ipadecrypt names
+  the file from the real app metadata (accurate for App Store, installed, and local-IPA sources),
+  and Decrypta tidies off the `.decrypted` suffix. The GUI, CLI, and bot all share one decrypt path.
+
 ## [1.0.4] - 2026-07-22
 
 ### Fixed

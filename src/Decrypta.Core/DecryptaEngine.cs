@@ -75,10 +75,13 @@ public sealed class DecryptaEngine
         }
         idec ??= _accounts.EnsureAndActivate("local");
 
+        // Output can be a directory (let ipadecrypt name it <bundleId>_<version>.decrypted.ipa),
+        // a full file path, or null (fall back to the default output folder, directory mode).
+        string outArg = string.IsNullOrEmpty(output) ? _settings.OutputDirectory : output;
         // Keep the encrypted-download cache inside the user's output folder (contained + cleanable).
-        string outputDir = !string.IsNullOrEmpty(output)
-            ? Path.GetDirectoryName(output) ?? _settings.OutputDirectory
-            : _settings.OutputDirectory;
+        string outputDir = Directory.Exists(outArg)
+            ? outArg
+            : Path.GetDirectoryName(outArg) ?? _settings.OutputDirectory;
         Directory.CreateDirectory(outputDir);
         bool redirected = CacheManager.RedirectCache(idec.RootDir, outputDir);
 
@@ -93,14 +96,165 @@ public sealed class DecryptaEngine
         onOutput($"[tunnel] 127.0.0.1:{tunnel.LocalPort} -> device:22 via {device.ConnectionSummary} ({banner})\n");
         onOutput($"[cache] {(redirected ? Path.Combine(outputDir, CacheManager.CacheFolderName) : idec.RootDir + "\\cache (fallback)")}\n");
         idec.Config.SetDeviceEndpoint("127.0.0.1", tunnel.LocalPort);
-        if (!string.IsNullOrEmpty(output))
-        {
-            onOutput($"[output] {output}\n");
-        }
+        onOutput($"[output] {outArg}\n");
 
-        var runner = idec.Decrypt(target, output, flags);
+        var runner = idec.Decrypt(target, outArg, flags);
         runner.Output += onOutput;
         return new RunningJob(runner, tunnel);
+    }
+
+    // ---- high-level decrypt (shared by GUI, CLI and the Telegram bot) ----
+
+    /// <summary>Options for a decrypt run, mirroring the GUI toggles.</summary>
+    public sealed record DecryptRequest(
+        string Target,
+        bool FromAppStore = true,
+        bool SkipAppex = false,
+        bool PatchDeviceType = false,
+        bool Verbose = true,
+        string? ExternalVersionId = null,
+        string? Storefront = null);
+
+    /// <summary>Outcome of a decrypt run. <see cref="OutputPath"/> is the final, tidily-named IPA.</summary>
+    public sealed record DecryptResult(int ExitCode, string? OutputPath, string? FileName, long Bytes)
+    {
+        public bool Ok => ExitCode == 0 && OutputPath is not null;
+    }
+
+    /// <summary>
+    /// Run a full decrypt end to end: resolve the target (incl. id/URL → bundle id for the
+    /// "use installed build" case), build flags, let ipadecrypt name the file
+    /// <c>&lt;bundleId&gt;_&lt;version&gt;.decrypted.ipa</c> in the output folder (accurate for App
+    /// Store, installed and local-IPA sources alike), then tidy the name to
+    /// <c>&lt;bundleId&gt;_&lt;version&gt;.ipa</c>. On failure, partial downloads are cleaned up.
+    /// </summary>
+    public async Task<DecryptResult> DecryptAsync(
+        DeviceInfo device, DecryptRequest req, Action<string> onOutput,
+        Action<RunningJob>? onJob = null, CancellationToken ct = default)
+    {
+        string target = req.Target.Trim();
+        bool pinned = !string.IsNullOrWhiteSpace(req.ExternalVersionId);
+
+        // "Use installed build" matches by bundle id, so resolve an id/URL to a bundle id first.
+        if (!req.FromAppStore && !pinned && !IsLocalIpa(target) && !AppStoreLookup.LooksLikeBundleId(target))
+        {
+            var (appId, country) = AppStoreLookup.ParseAppStoreRef(target);
+            if (appId is not null)
+            {
+                onOutput($"resolving App Store id {appId}…\n");
+                var sf = req.Storefront ?? (string.IsNullOrWhiteSpace(_settings.Storefront) ? null : _settings.Storefront);
+                var bundleId = await AppStoreLookup.LookupBundleIdAsync(appId, [country, sf], ct).ConfigureAwait(false);
+                if (bundleId is not null)
+                {
+                    onOutput($"[resolve] App Store id {appId} -> {bundleId} (using installed build)\n");
+                    target = bundleId;
+                }
+                else
+                {
+                    onOutput($"[resolve] couldn't resolve id {appId} to a bundle id — fetching from the App Store instead.\n");
+                }
+            }
+        }
+
+        var flags = new List<string>();
+        if (req.Verbose)
+        {
+            flags.Add("--verbose");
+        }
+        // A pinned historical version can only come from the App Store (never the installed build).
+        flags.Add(req.FromAppStore || pinned ? "--from-appstore" : "--use-installed");
+        if (req.SkipAppex)
+        {
+            flags.Add("--skip-appex");
+        }
+        if (req.PatchDeviceType)
+        {
+            flags.Add("--patch-device-type");
+        }
+        if (pinned)
+        {
+            flags.Add("--external-version-id");
+            flags.Add(req.ExternalVersionId!.Trim());
+        }
+        string? storefront = req.Storefront ?? (string.IsNullOrWhiteSpace(_settings.Storefront) ? null : _settings.Storefront);
+        if (!string.IsNullOrWhiteSpace(storefront))
+        {
+            flags.Add("--storefront");
+            flags.Add(storefront.Trim());
+        }
+
+        string outputDir = _settings.OutputDirectory;
+        Directory.CreateDirectory(outputDir);
+        var before = SnapshotIpas(outputDir);
+
+        var job = StartDecrypt(device, target, outputDir, flags, onOutput);
+        onJob?.Invoke(job);
+        await using var reg = ct.Register(() => { try { job.Cancel(); } catch (InvalidOperationException) { } });
+        int rc = await job.Completion.ConfigureAwait(false);
+
+        if (rc != 0)
+        {
+            CleanPartials();
+            return new DecryptResult(rc, null, null, 0);
+        }
+
+        var produced = ClaimNewIpa(outputDir, before);
+        return new DecryptResult(0, produced?.FullName, produced?.Name, produced?.Length ?? 0);
+    }
+
+    private static List<string> SnapshotIpas(string dir) =>
+        Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*.ipa").ToList() : [];
+
+    /// <summary>Find the IPA ipadecrypt just wrote (new since <paramref name="before"/>) and rename
+    /// <c>.decrypted.ipa</c> → <c>.ipa</c> so the Library shows a clean <bundleId>_<version> name.</summary>
+    private static FileInfo? ClaimNewIpa(string dir, IReadOnlyList<string> before)
+    {
+        var seen = new HashSet<string>(before, StringComparer.OrdinalIgnoreCase);
+        var produced = Directory.EnumerateFiles(dir, "*.ipa")
+            .Where(f => !seen.Contains(f))
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .FirstOrDefault()
+            // fall back to newest overall if the run overwrote a same-named file
+            ?? Directory.EnumerateFiles(dir, "*.ipa")
+                .Select(f => new FileInfo(f))
+                .OrderByDescending(fi => fi.LastWriteTimeUtc)
+                .FirstOrDefault();
+
+        if (produced is null)
+        {
+            return null;
+        }
+
+        string tidy = TidyDecryptedName(produced.Name);
+        if (!string.Equals(tidy, produced.Name, StringComparison.Ordinal))
+        {
+            string clean = Path.Combine(dir, tidy);
+            try
+            {
+                if (File.Exists(clean))
+                {
+                    File.Delete(clean);
+                }
+                File.Move(produced.FullName, clean);
+                return new FileInfo(clean);
+            }
+            catch (IOException)
+            {
+                return produced; // keep ipadecrypt's name if the rename fails
+            }
+        }
+        return produced;
+    }
+
+    /// <summary>ipadecrypt writes <c>&lt;bundleId&gt;_&lt;version&gt;.decrypted.ipa</c>; tidy that to
+    /// <c>&lt;bundleId&gt;_&lt;version&gt;.ipa</c> so the Library shows a clean name.</summary>
+    public static string TidyDecryptedName(string fileName)
+    {
+        const string suffix = ".decrypted.ipa";
+        return fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^suffix.Length] + ".ipa"
+            : fileName;
     }
 
     // ---- version listing (for the "pick a specific version" UI) ----
@@ -238,12 +392,6 @@ public sealed class DecryptaEngine
     public long CleanPartials() =>
         CacheManager.CleanPartials(_settings.OutputDirectory, _accounts.AllRoots());
 
-    public static string DefaultOutputPath(string outputDir, string target)
-    {
-        Directory.CreateDirectory(outputDir);
-        return Path.Combine(outputDir, $"{SafeName(target)}.decrypted.ipa");
-    }
-
     public static bool IsLocalIpa(string target)
         => target.EndsWith(".ipa", StringComparison.OrdinalIgnoreCase) && File.Exists(target);
 
@@ -263,18 +411,4 @@ public sealed class DecryptaEngine
         }
     }
 
-    private static string SafeName(string target)
-    {
-        var name = target;
-        if (name.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-        {
-            var parts = name.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            name = parts.LastOrDefault(p => p.StartsWith("id", StringComparison.OrdinalIgnoreCase)) ?? parts[^1];
-        }
-        foreach (var c in Path.GetInvalidFileNameChars())
-        {
-            name = name.Replace(c, '_');
-        }
-        return name;
-    }
 }

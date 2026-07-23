@@ -27,6 +27,6 @@ out/
 
 # Other tools
 remove_black_corners.py
-
+iOS-Runtime/
 # NOTE: tools/ipadecrypt.exe IS committed on purpose: the app bundles it and the build copies it
 # next to the output. It comes from the upstream MIT release.

@@ -79,7 +79,7 @@ static async Task<int> DecryptCmd(string[] args)
 {
     if (args.Length < 2)
     {
-        Console.Error.WriteLine("usage: decrypta decrypt <bundle-id|id|url|path.ipa> [--use-installed] [--udid X] [-o out.ipa]");
+        Console.Error.WriteLine("usage: decrypta-cli decrypt <bundle-id|id|url|path.ipa> [--use-installed] [--external-version-id <id>] [--udid X]");
         return 1;
     }
     var target = args[1];
@@ -91,28 +91,21 @@ static async Task<int> DecryptCmd(string[] args)
     Console.WriteLine($"device: {device.Summary}");
 
     var extVersionId = ArgValue(args, "--external-version-id");
-    var flags = new List<string>();
     // A pinned historical version can only come from the App Store, never the installed build.
     bool useInstalled = HasFlag(args, "--use-installed") && string.IsNullOrWhiteSpace(extVersionId);
-    flags.Add(useInstalled ? "--use-installed" : "--from-appstore");
-    if (!string.IsNullOrWhiteSpace(extVersionId))
-    {
-        flags.Add("--external-version-id");
-        flags.Add(extVersionId!);
-    }
-    if (settings.VerboseLog)
-    {
-        flags.Add("--verbose");
-    }
+    var req = new DecryptaEngine.DecryptRequest(
+        Target: target,
+        FromAppStore: !useInstalled,
+        Verbose: settings.VerboseLog,
+        ExternalVersionId: string.IsNullOrWhiteSpace(extVersionId) ? null : extVersionId);
 
-    var output = ArgValue(args, "-o")
-                 ?? (DecryptaEngine.IsLocalIpa(target) ? null
-                     : DecryptaEngine.DefaultOutputPath(settings.OutputDirectory, target));
-
-    var job = engine.StartDecrypt(device, target, output, flags, s => Console.Write(s));
-    int rc = await job.Completion;
-    Console.WriteLine($"\n[exit {rc}]");
-    return rc;
+    var result = await engine.DecryptAsync(device, req, s => Console.Write(s));
+    if (result.Ok)
+    {
+        Console.WriteLine($"\n[saved] {result.OutputPath}");
+    }
+    Console.WriteLine($"[exit {result.ExitCode}]");
+    return result.ExitCode;
 }
 
 static async Task<int> VersionsCmd(string[] args)
@@ -167,7 +160,8 @@ static void PrintUsage()
           decrypta-cli doctor [--udid <udid>]
           decrypta-cli versions <bundle-id|id|url> [-n <count>]
           decrypta-cli decrypt <bundle-id|id|url|path.ipa> [--use-installed]
-                       [--external-version-id <id>] [--udid <udid>] [-o <out.ipa>]
+                       [--external-version-id <id>] [--udid <udid>]
+          (output is saved to your configured folder as <bundleId>_<version>.ipa)
 
         Sign-in (Apple ID + 2FA) is done in the Decrypta desktop app.
         'versions' lists App Store builds so you can pass one to 'decrypt --external-version-id'.
