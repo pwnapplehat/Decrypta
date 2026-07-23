@@ -117,9 +117,11 @@ you're away from the machine.
 1. In Telegram, message **[@BotFather](https://t.me/BotFather)** → `/newbot` → copy the token.
 2. Decrypta → **Telegram** tab → paste the token, tick **Enable Telegram bot**, click **Apply**.
 3. Open your new bot, press **Start**, and send **`/pair <code>`** using the code shown in the app.
-4. Now control it from anywhere: `/decrypt <app>`, `/versions <app>`, `/status`, `/devices`,
-   `/library`, `/cancel`. The decrypted IPA is sent to the chat (or its PC path if it exceeds
-   Telegram's ~50 MB bot upload limit).
+4. Now control it from anywhere by **tapping buttons** — a persistent menu (🔓 Decrypt · 🕘 Pick
+   version · 📱 Status · 🔌 Devices · 📚 Library) and inline cards to choose source, pick a
+   version, and toggle options. The only thing you type is the app itself. (Slash commands like
+   `/decrypt <app>` still work too.) The decrypted IPA is sent to the chat, or as a private link
+   for big apps (see below).
 
 Only chats that complete pairing can control the bot; the token and allow-list are stored locally.
 

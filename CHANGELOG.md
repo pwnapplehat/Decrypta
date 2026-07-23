@@ -4,6 +4,18 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-23
+
+### Changed
+- **The Telegram bot is now fully interactive — tap buttons instead of typing commands.** A
+  persistent menu (🔓 Decrypt · 🕘 Pick version · 📱 Status · 🔌 Devices · 📚 Library) plus
+  inline-button cards: choose **App Store / Installed**, tap **Version** to pick a build from a
+  list (with Load more), toggle **Skip app extensions**, then **Decrypt** — all by tapping. The
+  only thing you type is the app itself (bundle id / App Store id / link). The old slash commands
+  (`/decrypt <app>`, `/versions <app>`, `/cancel`, `/menu`) still work for power users, and the
+  app's Telegram log now shows bot activity (menu taps, decrypts).
+- Verified live: tapping the menu is received and routed by the running bot.
+
 ## [1.2.0] - 2026-07-23
 
 ### Added

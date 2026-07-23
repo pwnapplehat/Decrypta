@@ -1,9 +1,10 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using Decrypta.Core.Devices;
+using Decrypta.Core.AppStore;
 using Decrypta.Core.Tools;
 using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace Decrypta.Core.TelegramBot;
 
@@ -32,6 +33,33 @@ public sealed class TelegramBotService : IDisposable
     private string _largeFileMode = "link";
     private readonly BotApiServerManager _apiServer = new();
     private readonly FileShareService _fileShare = new();
+    private readonly ConcurrentDictionary<long, ChatSession> _sessions = new();
+
+    // Persistent bottom-menu labels (a reply keyboard sends the label as a normal message).
+    private const string MenuDecrypt = "🔓 Decrypt";
+    private const string MenuVersions = "🕘 Pick version";
+    private const string MenuStatus = "📱 Status";
+    private const string MenuDevices = "🔌 Devices";
+    private const string MenuLibrary = "📚 Library";
+
+    private sealed class ChatSession
+    {
+        public bool AwaitingApp;
+        public bool AwaitForVersions;
+        public Draft? Draft;
+    }
+
+    private sealed class Draft
+    {
+        public string Target = "";
+        public bool FromAppStore = true;
+        public bool SkipAppex;
+        public string? ExternalVersionId;
+        public string? VersionLabel;
+        public DecryptaEngine.VersionList? Versions;
+        public readonly List<AppVersion> Resolved = [];
+        public int CardMessageId;
+    }
 
     public bool Running { get; private set; }
     public string? BotUsername { get; private set; }
@@ -98,7 +126,7 @@ public sealed class TelegramBotService : IDisposable
 
             var me = await bot.GetMe().ConfigureAwait(false);
             BotUsername = me.Username;
-            bot.OnMessage += OnMessage;
+            bot.OnUpdate += OnUpdate;
             bot.OnError += OnError;
 
             _bot = bot;
@@ -146,50 +174,314 @@ public sealed class TelegramBotService : IDisposable
         return Task.CompletedTask;
     }
 
-    private async Task OnMessage(Message msg, UpdateType type)
+    private async Task OnUpdate(Update update)
     {
-        if (msg.Text is not { } raw)
-        {
-            return;
-        }
-        long chatId = msg.Chat.Id;
-        var (cmd, arg) = SplitCommand(raw.Trim());
-
         try
         {
-            switch (cmd)
+            if (update.Message is { Text: { } text } m)
             {
-                case "/start":
-                    await Send(chatId, WelcomeText(chatId));
-                    return;
-                case "/pair":
-                    await HandlePair(chatId, arg);
-                    return;
-                case "/help":
-                    await Send(chatId, HelpText());
-                    return;
+                await OnText(m.Chat.Id, text.Trim());
             }
-
-            if (!IsAllowed(chatId))
+            else if (update.CallbackQuery is { } cq)
             {
-                await Send(chatId, "This bot isn't paired with you yet.\nOpen Decrypta on your PC, copy the pair code, and send:  /pair <code>");
-                return;
-            }
-
-            switch (cmd)
-            {
-                case "/status": await HandleStatus(chatId); break;
-                case "/devices": await HandleDevices(chatId); break;
-                case "/versions": await HandleVersions(chatId, arg); break;
-                case "/decrypt": await HandleDecrypt(chatId, arg); break;
-                case "/cancel": await HandleCancel(chatId); break;
-                case "/library": await HandleLibrary(chatId); break;
-                default: await Send(chatId, "Unknown command. Send /help for the list."); break;
+                await OnCallback(cq);
             }
         }
         catch (Exception ex)
         {
-            await Send(chatId, $"error: {ex.Message}");
+            Log?.Invoke($"Telegram: {ex.Message}");
+        }
+    }
+
+    private async Task OnText(long chatId, string text)
+    {
+        var (cmd, arg) = SplitCommand(text);
+
+        // Always-available commands.
+        switch (cmd)
+        {
+            case "/start" or "/menu":
+                if (IsAllowed(chatId)) { await ShowMenu(chatId, MenuGreeting); }
+                else { await Send(chatId, WelcomeText(chatId)); }
+                return;
+            case "/pair": await HandlePair(chatId, arg); return;
+            case "/help": await Send(chatId, HelpText()); return;
+        }
+
+        if (!IsAllowed(chatId))
+        {
+            await Send(chatId, "This bot isn't paired with you yet.\nOpen Decrypta on your PC → Telegram tab, copy the pair code, and send:  /pair <code>");
+            return;
+        }
+
+        // Bottom-menu taps (sent as plain text by the reply keyboard).
+        switch (text)
+        {
+            case MenuDecrypt: Log?.Invoke("bot: menu Decrypt"); await StartAppPrompt(chatId, forVersions: false); return;
+            case MenuVersions: Log?.Invoke("bot: menu Pick version"); await StartAppPrompt(chatId, forVersions: true); return;
+            case MenuStatus: Log?.Invoke("bot: menu Status"); await HandleStatus(chatId); return;
+            case MenuDevices: Log?.Invoke("bot: menu Devices"); await HandleDevices(chatId); return;
+            case MenuLibrary: Log?.Invoke("bot: menu Library"); await HandleLibrary(chatId); return;
+        }
+
+        // Power-user slash commands still work.
+        switch (cmd)
+        {
+            case "/status": await HandleStatus(chatId); return;
+            case "/devices": await HandleDevices(chatId); return;
+            case "/library": await HandleLibrary(chatId); return;
+            case "/cancel": await HandleCancel(chatId); return;
+            case "/decrypt" when arg.Length > 0: await BeginDraft(chatId, FirstToken(arg), startAtVersions: false); return;
+            case "/versions" when arg.Length > 0: await BeginDraft(chatId, FirstToken(arg), startAtVersions: true); return;
+            case "/decrypt": await StartAppPrompt(chatId, forVersions: false); return;
+            case "/versions": await StartAppPrompt(chatId, forVersions: true); return;
+        }
+
+        // Otherwise: if we're waiting for an app identifier, this text is it.
+        var sess = _sessions.GetOrAdd(chatId, _ => new ChatSession());
+        if (sess.AwaitingApp && !text.StartsWith('/'))
+        {
+            sess.AwaitingApp = false;
+            Log?.Invoke($"bot: app = {text.Trim()}");
+            await BeginDraft(chatId, text.Trim(), startAtVersions: sess.AwaitForVersions);
+            return;
+        }
+
+        await ShowMenu(chatId, "Tap an option below 👇");
+    }
+
+    private async Task StartAppPrompt(long chatId, bool forVersions)
+    {
+        var sess = _sessions.GetOrAdd(chatId, _ => new ChatSession());
+        sess.AwaitingApp = true;
+        sess.AwaitForVersions = forVersions;
+        await Send(chatId, "Send the app — a bundle id (e.g. com.burbn.instagram), an App Store numeric id, or an App Store link.");
+    }
+
+    // Build the interactive "decrypt card" for an app and (optionally) jump straight to the version picker.
+    private async Task BeginDraft(long chatId, string target, bool startAtVersions)
+    {
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            await Send(chatId, "Send a bundle id, App Store id, or link.");
+            return;
+        }
+        var sess = _sessions.GetOrAdd(chatId, _ => new ChatSession());
+        var d = new Draft { Target = target.Trim(), FromAppStore = true };
+        sess.Draft = d;
+        var msg = await _bot!.SendMessage(chatId, CardText(d), replyMarkup: CardKeyboard(d));
+        d.CardMessageId = msg.MessageId;
+        if (startAtVersions)
+        {
+            await ShowVersionButtons(chatId, d.CardMessageId, d, loadMore: false);
+        }
+    }
+
+    private async Task OnCallback(CallbackQuery cq)
+    {
+        long chatId = cq.Message?.Chat.Id ?? cq.From.Id;
+        int msgId = cq.Message?.MessageId ?? 0;
+        string data = cq.Data ?? "";
+        try { await _bot!.AnswerCallbackQuery(cq.Id); } catch (Exception) { /* expired */ }
+
+        if (!IsAllowed(chatId))
+        {
+            return;
+        }
+        Log?.Invoke($"bot tap: {data}");
+        if (data == "menu")
+        {
+            await ShowMenu(chatId, MenuGreeting);
+            return;
+        }
+
+        var sess = _sessions.GetOrAdd(chatId, _ => new ChatSession());
+        var d = sess.Draft;
+        if (d is null)
+        {
+            await ShowMenu(chatId, "That card expired — tap an option:");
+            return;
+        }
+
+        switch (data)
+        {
+            case "src:as": d.FromAppStore = true; await UpdateCard(chatId, msgId, d); break;
+            case "src:inst": d.FromAppStore = false; d.ExternalVersionId = null; d.VersionLabel = null; await UpdateCard(chatId, msgId, d); break;
+            case "appex": d.SkipAppex = !d.SkipAppex; await UpdateCard(chatId, msgId, d); break;
+            case "pickver": await ShowVersionButtons(chatId, msgId, d, loadMore: false); break;
+            case "vermore": await ShowVersionButtons(chatId, msgId, d, loadMore: true); break;
+            case "verlatest": d.ExternalVersionId = null; d.VersionLabel = "latest"; await UpdateCard(chatId, msgId, d); break;
+            case "card": await UpdateCard(chatId, msgId, d); break;
+            case "cancel": sess.Draft = null; await TryEdit(chatId, msgId, "Cancelled."); await ShowMenu(chatId, MenuGreeting); break;
+            case "go": await RunDraft(chatId, msgId, d); break;
+            default:
+                if (data.StartsWith("ver:") && int.TryParse(data[4..], out int idx) && idx >= 0 && idx < d.Resolved.Count)
+                {
+                    var v = d.Resolved[idx];
+                    d.ExternalVersionId = v.ExternalId;
+                    d.VersionLabel = v.DisplayVersion is { Length: > 0 } dv ? dv : v.ExternalId;
+                    d.FromAppStore = true;
+                    await UpdateCard(chatId, msgId, d);
+                }
+                break;
+        }
+    }
+
+    private async Task ShowVersionButtons(long chatId, int msgId, Draft d, bool loadMore)
+    {
+        var engine = NewEngine();
+        if (d.Versions is null)
+        {
+            await TryEdit(chatId, msgId, $"Loading versions for {d.Target}…");
+            var listed = await engine.LoadVersionListAsync(d.Target, _ => { });
+            if (listed.Error is not null || listed.List is null)
+            {
+                await SafeEdit(chatId, msgId, $"Couldn't list versions: {listed.Error ?? "none found"}", CardKeyboard(d));
+                return;
+            }
+            d.Versions = listed.List;
+        }
+
+        int target = loadMore ? d.Resolved.Count + 8 : Math.Max(d.Resolved.Count, 8);
+        target = Math.Min(target, d.Versions.VersionIds.Count);
+        if (target > d.Resolved.Count)
+        {
+            var slice = d.Versions.VersionIds.Skip(d.Resolved.Count).Take(target - d.Resolved.Count).ToList();
+            var resolved = await engine.ResolveVersionsAsync(d.Versions.AdamId, slice, d.Versions.VersionIds.FirstOrDefault());
+            d.Resolved.AddRange(resolved);
+        }
+
+        var rows = new List<InlineKeyboardButton[]>();
+        for (int i = 0; i < d.Resolved.Count; i++)
+        {
+            rows.Add([InlineKeyboardButton.WithCallbackData(d.Resolved[i].Label, $"ver:{i}")]);
+        }
+        var nav = new List<InlineKeyboardButton> { InlineKeyboardButton.WithCallbackData("⭐ Latest", "verlatest") };
+        if (d.Resolved.Count < d.Versions.VersionIds.Count)
+        {
+            nav.Add(InlineKeyboardButton.WithCallbackData("⬇️ Load more", "vermore"));
+        }
+        nav.Add(InlineKeyboardButton.WithCallbackData("◀ Back", "card"));
+        rows.Add([.. nav]);
+
+        await SafeEdit(chatId, msgId,
+            $"Pick a version of {d.Target}  ({d.Resolved.Count}/{d.Versions.VersionIds.Count} shown):",
+            new InlineKeyboardMarkup(rows));
+    }
+
+    private async Task RunDraft(long chatId, int msgId, Draft d)
+    {
+        var req = new DecryptaEngine.DecryptRequest(
+            Target: d.Target,
+            FromAppStore: d.FromAppStore,
+            SkipAppex: d.SkipAppex,
+            Verbose: false,
+            ExternalVersionId: d.ExternalVersionId);
+        try
+        {
+            await RunDecrypt(chatId, msgId, req, d.Target);
+        }
+        finally
+        {
+            _sessions.GetOrAdd(chatId, _ => new ChatSession()).Draft = null;
+            await ShowMenu(chatId, "Done — anything else?");
+        }
+    }
+
+    private string CardText(Draft d)
+    {
+        string version = d.FromAppStore ? $"\n• Version: {d.VersionLabel ?? "latest"}" : "";
+        return $"🔓 Decrypt\n• App: {d.Target}\n• Source: {(d.FromAppStore ? "App Store" : "installed build")}{version}\n• Skip app extensions: {(d.SkipAppex ? "yes" : "no")}\n\nAdjust with the buttons, then tap Decrypt.";
+    }
+
+    private static InlineKeyboardMarkup CardKeyboard(Draft d)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData((d.FromAppStore ? "● " : "○ ") + "App Store", "src:as"),
+            InlineKeyboardButton.WithCallbackData((!d.FromAppStore ? "● " : "○ ") + "Installed", "src:inst"),
+        });
+        if (d.FromAppStore)
+        {
+            rows.Add(new[] { InlineKeyboardButton.WithCallbackData($"🕘 Version: {d.VersionLabel ?? "latest"}", "pickver") });
+        }
+        rows.Add(new[] { InlineKeyboardButton.WithCallbackData($"🧩 Skip app extensions: {(d.SkipAppex ? "on" : "off")}", "appex") });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("▶️ Decrypt", "go"),
+            InlineKeyboardButton.WithCallbackData("✖️ Cancel", "cancel"),
+        });
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private async Task UpdateCard(long chatId, int msgId, Draft d)
+        => await SafeEdit(chatId, msgId, CardText(d), CardKeyboard(d));
+
+    // ---- shared decrypt runner (used by the card flow and the /decrypt command) ----
+
+    private async Task RunDecrypt(long chatId, int statusMsgId, DecryptaEngine.DecryptRequest req, string label)
+    {
+        if (!await _opGate.WaitAsync(0))
+        {
+            await Send(chatId, "A decrypt is already running. Send /cancel to stop it.");
+            return;
+        }
+        try
+        {
+            var engine = NewEngine();
+            if (!engine.Devices.ServiceReachable())
+            {
+                await TryEdit(chatId, statusMsgId, "Apple Mobile Device service isn't reachable on the PC.");
+                return;
+            }
+            var device = engine.Devices.Select(Settings.Load().LastUdid) ?? engine.Devices.ListDevices().FirstOrDefault();
+            if (device is null)
+            {
+                await TryEdit(chatId, statusMsgId, "No device connected. Plug in / network-pair your jailbroken device and try again.");
+                return;
+            }
+            if (!DecryptaEngine.IsLocalIpa(req.Target) && !engine.IsSignedIn)
+            {
+                await TryEdit(chatId, statusMsgId, "Not signed in. Sign in with your Apple ID in the Decrypta app on the PC first.");
+                return;
+            }
+
+            Log?.Invoke($"bot: decrypt {label} ({(req.FromAppStore ? "App Store" : "installed")}{(req.ExternalVersionId is { Length: > 0 } v ? $" v{v}" : "")})");
+            await TryEdit(chatId, statusMsgId, $"⏳ Decrypting {label} on {device.Summary}…");
+            var lastEdit = DateTime.MinValue;
+            var result = await engine.DecryptAsync(
+                device, req,
+                onOutput: line =>
+                {
+                    string l = line.Trim();
+                    if (l.Length == 0)
+                    {
+                        return;
+                    }
+                    var now = DateTime.UtcNow;
+                    if ((now - lastEdit).TotalSeconds >= 2.5)
+                    {
+                        lastEdit = now;
+                        _ = TryEdit(chatId, statusMsgId, $"⏳ Decrypting {label}…\n{Truncate(l, 180)}");
+                    }
+                },
+                onJob: j => _activeJob = j);
+
+            if (result.Ok)
+            {
+                await TryEdit(chatId, statusMsgId, $"✅ Decrypted {result.FileName} ({HumanSize(result.Bytes)})");
+                await SendResultFile(chatId, result);
+            }
+            else
+            {
+                await TryEdit(chatId, statusMsgId, $"❌ Decrypt failed (exit {result.ExitCode}). Check the PC log for details.");
+            }
+        }
+        finally
+        {
+            _activeJob = null;
+            _opGate.Release();
         }
     }
 
@@ -220,7 +512,7 @@ public sealed class TelegramBotService : IDisposable
             _allowed.Add(chatId);
         }
         Log?.Invoke($"Telegram: paired chat {chatId}.");
-        await Send(chatId, "✅ Paired! You can now use /decrypt, /versions, /status, /devices, /library. Send /help for details.");
+        await ShowMenu(chatId, "✅ Paired! Use the buttons below to control Decrypta from here.");
     }
 
     private async Task HandleStatus(long chatId)
@@ -255,119 +547,6 @@ public sealed class TelegramBotService : IDisposable
             return;
         }
         await Send(chatId, "Connected devices:\n" + string.Join("\n", devs.Select(d => "• " + d.Summary)));
-    }
-
-    private async Task HandleVersions(long chatId, string arg)
-    {
-        if (string.IsNullOrWhiteSpace(arg))
-        {
-            await Send(chatId, "Usage: /versions <bundle-id | app-store-id | link>");
-            return;
-        }
-        var engine = NewEngine();
-        var listed = await engine.LoadVersionListAsync(arg.Trim(), _ => { });
-        if (listed.Error is not null || listed.List is null)
-        {
-            await Send(chatId, listed.Error ?? "no versions found");
-            return;
-        }
-        var list = listed.List;
-        var page = list.VersionIds.Take(12).ToList();
-        var resolved = await engine.ResolveVersionsAsync(list.AdamId, page, list.VersionIds.FirstOrDefault());
-        var lines = resolved.Select(v => $"`{v.ExternalId}`  {v.Label}");
-        await Send(chatId,
-            $"Newest {resolved.Count} of {list.VersionIds.Count} versions:\n" + string.Join("\n", lines) +
-            "\n\nDecrypt a specific one:  /decrypt <app> --version <id>");
-    }
-
-    private async Task HandleDecrypt(long chatId, string arg)
-    {
-        var parts = arg.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            await Send(chatId, "Usage: /decrypt <bundle-id | app-store-id | link> [--installed] [--skip-appex] [--version <id>]");
-            return;
-        }
-
-        if (!await _opGate.WaitAsync(0))
-        {
-            await Send(chatId, "A decrypt is already running. Send /cancel to stop it.");
-            return;
-        }
-
-        try
-        {
-            string target = parts[0];
-            bool installed = parts.Contains("--installed") || parts.Contains("--use-installed");
-            bool skipAppex = parts.Contains("--skip-appex");
-            string? version = null;
-            int vi = Array.FindIndex(parts, p => p is "--version" or "-v");
-            if (vi >= 0 && vi + 1 < parts.Length)
-            {
-                version = parts[vi + 1];
-            }
-
-            var engine = NewEngine();
-            if (!engine.Devices.ServiceReachable())
-            {
-                await Send(chatId, "Apple Mobile Device service isn't reachable on the PC.");
-                return;
-            }
-            var device = engine.Devices.Select(Settings.Load().LastUdid) ?? engine.Devices.ListDevices().FirstOrDefault();
-            if (device is null)
-            {
-                await Send(chatId, "No device connected. Plug in / network-pair your jailbroken device and try again.");
-                return;
-            }
-            if (!DecryptaEngine.IsLocalIpa(target) && !engine.IsSignedIn)
-            {
-                await Send(chatId, "Not signed in. Sign in with your Apple ID in the Decrypta app on the PC first.");
-                return;
-            }
-
-            var statusMsg = await Send(chatId, $"⏳ Decrypting {target} on {device.Summary}…");
-            var lastEdit = DateTime.MinValue;
-
-            var req = new DecryptaEngine.DecryptRequest(
-                Target: target,
-                FromAppStore: !installed,
-                SkipAppex: skipAppex,
-                Verbose: false,
-                ExternalVersionId: version);
-
-            var result = await engine.DecryptAsync(
-                device, req,
-                onOutput: line =>
-                {
-                    string l = line.Trim();
-                    if (l.Length == 0)
-                    {
-                        return;
-                    }
-                    var now = DateTime.UtcNow;
-                    if ((now - lastEdit).TotalSeconds >= 2.5)
-                    {
-                        lastEdit = now;
-                        _ = TryEdit(chatId, statusMsg.MessageId, $"⏳ Decrypting {target}…\n{Truncate(l, 180)}");
-                    }
-                },
-                onJob: j => _activeJob = j);
-
-            if (result.Ok)
-            {
-                await TryEdit(chatId, statusMsg.MessageId, $"✅ Decrypted {result.FileName} ({HumanSize(result.Bytes)})");
-                await SendResultFile(chatId, result);
-            }
-            else
-            {
-                await TryEdit(chatId, statusMsg.MessageId, $"❌ Decrypt failed (exit {result.ExitCode}). Check the PC log for details.");
-            }
-        }
-        finally
-        {
-            _activeJob = null;
-            _opGate.Release();
-        }
     }
 
     private async Task SendResultFile(long chatId, DecryptaEngine.DecryptResult result)
@@ -468,6 +647,23 @@ public sealed class TelegramBotService : IDisposable
     private async Task<Message> Send(long chatId, string text)
         => await _bot!.SendMessage(chatId, text);
 
+    private const string MenuGreeting = "What would you like to do?";
+
+    private static readonly ReplyKeyboardMarkup Menu = new(new[]
+    {
+        new KeyboardButton[] { MenuDecrypt, MenuVersions },
+        new KeyboardButton[] { MenuStatus, MenuDevices, MenuLibrary },
+    })
+    { ResizeKeyboard = true, IsPersistent = true };
+
+    private async Task ShowMenu(long chatId, string text)
+    {
+        if (_bot is not null)
+        {
+            await _bot.SendMessage(chatId, text, replyMarkup: Menu);
+        }
+    }
+
     private async Task TryEdit(long chatId, int messageId, string text)
     {
         try
@@ -481,6 +677,27 @@ public sealed class TelegramBotService : IDisposable
         {
             // edit can fail if the text is unchanged or we're rate-limited; ignore
         }
+    }
+
+    private async Task SafeEdit(long chatId, int messageId, string text, InlineKeyboardMarkup markup)
+    {
+        try
+        {
+            if (_bot is not null)
+            {
+                await _bot.EditMessageText(chatId, messageId, text, replyMarkup: markup);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // unchanged text / rate limit / expired message — ignore
+        }
+    }
+
+    private static string FirstToken(string s)
+    {
+        var t = s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return t.Length > 0 ? t[0] : "";
     }
 
     private static (string Cmd, string Arg) SplitCommand(string text)
@@ -506,19 +723,18 @@ public sealed class TelegramBotService : IDisposable
 
     private string WelcomeText(long chatId)
         => IsAllowed(chatId)
-            ? "Decrypta bot is ready. Send /help for commands."
-            : $"Welcome to Decrypta.\n\nTo control decryption from here, pair once:\n1. Open Decrypta on your PC → Telegram tab.\n2. Copy the pair code.\n3. Send:  /pair <code>";
+            ? "Decrypta bot is ready. Send /menu for the buttons."
+            : "Welcome to Decrypta.\n\nTo control decryption from here, pair once:\n1. Open Decrypta on your PC → Telegram tab.\n2. Copy the pair code.\n3. Send:  /pair <code>";
 
     private static string HelpText() =>
-        "Decrypta bot commands:\n" +
-        "/status — account, devices, output folder\n" +
-        "/devices — list connected devices\n" +
-        "/versions <app> — list App Store versions\n" +
-        "/decrypt <app> [--installed] [--skip-appex] [--version <id>] — decrypt an app\n" +
-        "/cancel — stop the current decrypt\n" +
-        "/library — recent decrypted IPAs\n" +
-        "/pair <code> — pair this chat (code shown in the app)\n\n" +
-        "<app> = bundle id, App Store numeric id, or App Store link.";
+        "Decrypta — control it from the buttons below (no typing needed):\n\n" +
+        "🔓 Decrypt — pick an app, then choose source / version / options and tap Decrypt.\n" +
+        "🕘 Pick version — browse an app's App Store versions and decrypt one.\n" +
+        "📱 Status — account, devices, output folder.\n" +
+        "🔌 Devices — connected devices.\n" +
+        "📚 Library — recent decrypted IPAs.\n\n" +
+        "The only thing you type is the app itself (a bundle id, App Store id, or link).\n" +
+        "Shortcuts still work: /decrypt <app>, /versions <app>, /cancel, /menu.";
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
