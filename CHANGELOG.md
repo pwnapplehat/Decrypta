@@ -4,6 +4,29 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-23
+
+### Added
+- **Automated large-file delivery for the Telegram bot — no manual setup.** Instead of asking you
+  to run a server and paste a URL, the Telegram tab now offers three modes for IPAs over Telegram's
+  50 MB cloud cap; helper tools download automatically on first use and **ports are auto-selected**:
+  - **Private download link (default, zero-config, any size)** — Decrypta auto-fetches Cloudflare's
+    official `cloudflared`, serves the IPA from a local port, and the bot sends an unguessable
+    `https://…trycloudflare.com/<token>/…` link that **auto-expires after 30 minutes**. Tested
+    end-to-end: the file downloads byte-exact through the tunnel.
+  - **In-chat up to ~2 GB (local Bot API server)** — Decrypta auto-downloads and runs a pinned,
+    hash-verified Telegram Bot API server and routes the bot through it. Needs a one-time
+    `api_id`/`api_hash` from my.telegram.org (Telegram requires this for *any* such server; it can't
+    be avoided). The credential fields appear only for this mode.
+  - **Leave on PC** — just report the path (previous behaviour).
+
+### Changed
+- Release pages now show the actual changelog for the version, not just a "Full Changelog" diff link.
+
+### Notes
+- Empirically confirmed Telegram's cloud Bot API rejects bot uploads over 50 MB (HTTP 413), which is
+  why the above exists. The download-link mode is the recommended zero-config path for big apps.
+
 ## [1.1.1] - 2026-07-23
 
 ### Added

@@ -29,6 +29,9 @@ public sealed class TelegramBotService : IDisposable
     private CancellationTokenSource? _cts;
     private RunningJob? _activeJob;
     private long _uploadLimit = CloudUploadLimit;
+    private string _largeFileMode = "link";
+    private readonly BotApiServerManager _apiServer = new();
+    private readonly FileShareService _fileShare = new();
 
     public bool Running { get; private set; }
     public string? BotUsername { get; private set; }
@@ -59,12 +62,30 @@ public sealed class TelegramBotService : IDisposable
         }
         PairCode = GeneratePairCode();
 
-        string baseUrl = settings.TelegramApiBaseUrl.Trim();
+        _largeFileMode = (settings.TelegramLargeFileMode ?? "link").Trim().ToLowerInvariant();
         var cts = new CancellationTokenSource();
         try
         {
+            // Decide the API endpoint: an explicit advanced URL, else an auto-managed local server
+            // (mode "server"), else Telegram's cloud API.
+            string? baseUrl = settings.TelegramApiBaseUrl.Trim();
+            baseUrl = baseUrl.Length > 0 ? baseUrl : null;
+            if (baseUrl is null && _largeFileMode == "server")
+            {
+                try
+                {
+                    baseUrl = await _apiServer.StartAsync(settings.TelegramApiId, settings.TelegramApiHash, Log, cts.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Log?.Invoke($"Telegram: local server unavailable ({ex.Message}); falling back to cloud + link.");
+                    _largeFileMode = "link";
+                }
+            }
+
             TelegramBotClient bot;
-            if (baseUrl.Length > 0)
+            if (baseUrl is not null)
             {
                 bot = new TelegramBotClient(new TelegramBotClientOptions(token, baseUrl), cancellationToken: cts.Token);
                 _uploadLimit = LocalServerUploadLimit;
@@ -83,7 +104,11 @@ public sealed class TelegramBotService : IDisposable
             _bot = bot;
             _cts = cts;
             Running = true;
-            string via = baseUrl.Length > 0 ? $" via local API ({baseUrl}, ~2 GB uploads)" : " (cloud API, 50 MB upload cap)";
+            string via = baseUrl is not null
+                ? " via local Bot API server (~2 GB in-chat uploads)"
+                : _largeFileMode == "link"
+                    ? " (cloud API; big files sent as a private download link)"
+                    : " (cloud API, 50 MB upload cap)";
             Log?.Invoke($"Telegram: @{BotUsername} online{via}. Pair from your phone with:  /pair {PairCode}");
             return true;
         }
@@ -111,6 +136,8 @@ public sealed class TelegramBotService : IDisposable
         _cts = null;
         _bot = null;
         Running = false;
+        _apiServer.Stop();
+        _fileShare.Dispose();
     }
 
     private Task OnError(Exception ex, Telegram.Bot.Polling.HandleErrorSource source)
@@ -365,8 +392,29 @@ public sealed class TelegramBotService : IDisposable
             }
         }
 
-        string hint = _uploadLimit <= CloudUploadLimit
-            ? "\n\nTip: to send big IPAs over Telegram, run a local Bot API server and set its URL in Decrypta's Telegram tab (raises the limit to ~2 GB)."
+        // Over the in-chat limit: offer a private download link (mode "link"), else point to the PC.
+        if (_largeFileMode == "link")
+        {
+            try
+            {
+                await Send(chatId, $"{result.FileName} is {HumanSize(result.Bytes)} — over the {HumanSize(_uploadLimit)} in-chat limit. Preparing a private download link…");
+                var ct = _cts?.Token ?? CancellationToken.None;
+                string? url = await _fileShare.ShareAsync(result.OutputPath, TimeSpan.FromMinutes(30), Log, ct);
+                if (url is not null)
+                {
+                    await Send(chatId,
+                        $"📦 {result.FileName} ({HumanSize(result.Bytes)})\n{url}\n\nPrivate link — expires in 30 minutes. Tap to download.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log?.Invoke($"Telegram: share link failed — {ex.Message}");
+            }
+        }
+
+        string hint = _largeFileMode != "server"
+            ? "\n\nTip: for in-chat delivery of big IPAs, switch large-file mode to \"local server\" in Decrypta's Telegram tab (up to ~2 GB)."
             : "";
         await Send(chatId,
             $"✅ {result.FileName} ({HumanSize(result.Bytes)})\nSaved on the PC:\n{result.OutputPath}\n\n(Over this bot's {HumanSize(_uploadLimit)} upload limit, so not sent here.){hint}");

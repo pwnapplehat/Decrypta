@@ -59,6 +59,12 @@ public sealed class MainViewModel : ObservableObject
         _telegramEnabled = _settings.TelegramEnabled;
         _telegramBotToken = _settings.TelegramBotToken;
         _telegramApiBaseUrl = _settings.TelegramApiBaseUrl;
+        var mode = (_settings.TelegramLargeFileMode ?? "link").Trim().ToLowerInvariant();
+        _largeModeOff = mode == "off";
+        _largeModeServer = mode == "server";
+        _largeModeLink = mode != "off" && mode != "server";
+        _telegramApiId = _settings.TelegramApiId > 0 ? _settings.TelegramApiId.ToString() : "";
+        _telegramApiHash = _settings.TelegramApiHash;
         ApplyTelegramCommand = new RelayCommand(() => _ = ApplyTelegramAsync());
         CopyPairCodeCommand = new RelayCommand(CopyPairCode);
         _telegram.Log += OnTelegramLog;
@@ -292,6 +298,32 @@ public sealed class MainViewModel : ObservableObject
     private string _telegramApiBaseUrl = "";
     public string TelegramApiBaseUrl { get => _telegramApiBaseUrl; set => SetProperty(ref _telegramApiBaseUrl, value); }
 
+    // Large-file (>50 MB) delivery mode, as three radio-bound flags.
+    private bool _largeModeOff;
+    public bool LargeModeOff { get => _largeModeOff; set => SetProperty(ref _largeModeOff, value); }
+
+    private bool _largeModeLink = true;
+    public bool LargeModeLink
+    {
+        get => _largeModeLink;
+        set { if (SetProperty(ref _largeModeLink, value)) { Raise(nameof(ShowApiCreds)); } }
+    }
+
+    private bool _largeModeServer;
+    public bool LargeModeServer
+    {
+        get => _largeModeServer;
+        set { if (SetProperty(ref _largeModeServer, value)) { Raise(nameof(ShowApiCreds)); } }
+    }
+
+    public bool ShowApiCreds => LargeModeServer;
+
+    private string _telegramApiId = "";
+    public string TelegramApiId { get => _telegramApiId; set => SetProperty(ref _telegramApiId, value); }
+
+    private string _telegramApiHash = "";
+    public string TelegramApiHash { get => _telegramApiHash; set => SetProperty(ref _telegramApiHash, value); }
+
     private bool _botRunning;
     public bool BotRunning { get => _botRunning; set => SetProperty(ref _botRunning, value); }
 
@@ -321,6 +353,9 @@ public sealed class MainViewModel : ObservableObject
         _settings.TelegramEnabled = TelegramEnabled;
         _settings.TelegramBotToken = TelegramBotToken.Trim();
         _settings.TelegramApiBaseUrl = TelegramApiBaseUrl.Trim();
+        _settings.TelegramLargeFileMode = LargeModeServer ? "server" : LargeModeOff ? "off" : "link";
+        _settings.TelegramApiId = int.TryParse(TelegramApiId.Trim(), out int apiId) ? apiId : 0;
+        _settings.TelegramApiHash = TelegramApiHash.Trim();
         _settings.Save();
 
         if (TelegramEnabled && !string.IsNullOrWhiteSpace(_settings.TelegramBotToken))

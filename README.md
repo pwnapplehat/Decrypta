@@ -123,9 +123,17 @@ you're away from the machine.
 
 Only chats that complete pairing can control the bot; the token and allow-list are stored locally.
 
-Telegram's cloud caps bot uploads at **50 MB**, so larger IPAs are left on the PC by default. To
-have big IPAs sent to your chat, run a self-hosted [Bot API server](https://github.com/tdlib/telegram-bot-api)
-and put its URL (e.g. `http://localhost:8081`) in the Telegram tab — that raises the limit to ~2 GB.
+**Big apps (over Telegram's 50 MB bot upload cap).** Pick how the bot delivers them in the Telegram
+tab — helper tools download automatically and ports are auto-selected, so there's nothing to install:
+
+- **Private download link** (default, zero-config, any size) — the bot sends an unguessable,
+  30-minute link (served locally and tunnelled through Cloudflare).
+- **In-chat up to ~2 GB** — Decrypta auto-runs a local Telegram Bot API server; this one needs a
+  one-time `api_id`/`api_hash` from [my.telegram.org](https://my.telegram.org) (Telegram requires it
+  for any such server).
+- **Leave on PC** — just report the path.
+
+<p align="center"><img src="docs/screenshots/telegram.png" width="820" alt="Telegram tab"></p>
 
 ## Command line
 

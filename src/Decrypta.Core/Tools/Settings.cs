@@ -27,9 +27,18 @@ public sealed class Settings
     public string TelegramBotToken { get; set; } = string.Empty;
     /// <summary>Chat ids allowed to control the bot (populated by /pair). Empty = nobody yet.</summary>
     public List<long> TelegramAllowedChatIds { get; set; } = [];
-    /// <summary>Optional local Bot API server base URL (e.g. http://localhost:8081). Empty = Telegram's
-    /// cloud API (50 MB upload cap). A local server raises the cap to ~2 GB so big IPAs can be sent.</summary>
+    /// <summary>Advanced: an already-running Bot API server base URL (e.g. http://localhost:8081).
+    /// Overrides the managed server. Empty = use the mode below.</summary>
     public string TelegramApiBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>How to deliver IPAs bigger than the 50 MB cloud cap: "off" (leave on PC),
+    /// "link" (private cloudflared download link, zero-config), or "server" (in-chat up to ~2 GB
+    /// via an auto-managed local Bot API server; needs api_id/api_hash).</summary>
+    public string TelegramLargeFileMode { get; set; } = "link";
+
+    /// <summary>api_id/api_hash from my.telegram.org — required only for the "server" large-file mode.</summary>
+    public int TelegramApiId { get; set; }
+    public string TelegramApiHash { get; set; } = string.Empty;
 
     public static Settings Load()
     {

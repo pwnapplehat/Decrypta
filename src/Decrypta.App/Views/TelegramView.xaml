@@ -27,11 +27,38 @@
         <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
                    Text="Create a bot once: open @BotFather in Telegram → send /newbot → follow the prompts → copy the token here. The token is stored locally on this PC only."/>
 
-        <TextBlock Text="Local Bot API server URL (optional)" Style="{StaticResource Text.FieldLabel}" Margin="0,14,0,4"/>
-        <ui:TextBox PlaceholderText="e.g. http://localhost:8081 — leave empty to use Telegram's cloud"
-                    Text="{Binding TelegramApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"/>
-        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
-                   Text="Telegram's cloud caps bot file uploads at 50 MB, so larger IPAs are left on the PC. Point the bot at a self-hosted Bot API server (telegram-bot-api) to raise that to ~2 GB and have big IPAs sent to your chat."/>
+        <Separator Margin="0,16,0,12" Background="{StaticResource Brush.Inset}"/>
+        <TextBlock Text="Big IPAs (over 50 MB)" Style="{StaticResource Text.FieldLabel}"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,4,0,8" TextWrapping="Wrap"
+                   Text="Telegram's cloud caps bot uploads at 50 MB. Choose how the bot delivers bigger apps (helper tools download automatically on first use; ports are auto-selected):"/>
+
+        <RadioButton GroupName="bigfile" Content="Private download link (recommended — any size, no setup)"
+                     IsChecked="{Binding LargeModeLink}" Margin="0,2,0,0"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="24,0,0,6" TextWrapping="Wrap"
+                   Text="Sends an unguessable https link (via Cloudflare) that expires in 30 min. The file is briefly reachable at that random URL while downloading."/>
+
+        <RadioButton GroupName="bigfile" Content="Send in-chat, up to ~2 GB (local Bot API server)"
+                     IsChecked="{Binding LargeModeServer}" Margin="0,2,0,0"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="24,0,0,6" TextWrapping="Wrap"
+                   Text="Auto-runs a bundled Telegram Bot API server. Needs a one-time api_id/api_hash (Telegram requires it for any such server)."/>
+
+        <StackPanel Margin="24,0,0,6" Visibility="{Binding ShowApiCreds, Converter={StaticResource BoolToVis}}">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="140"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ui:TextBox Grid.Column="0" PlaceholderText="api_id"
+                        Text="{Binding TelegramApiId, UpdateSourceTrigger=PropertyChanged}"/>
+            <ui:TextBox Grid.Column="1" Margin="8,0,0,0" PlaceholderText="api_hash"
+                        Text="{Binding TelegramApiHash, UpdateSourceTrigger=PropertyChanged}"/>
+          </Grid>
+          <TextBlock Style="{StaticResource Text.Caption}" Margin="0,4,0,0" TextWrapping="Wrap"
+                     Text="Get these free at my.telegram.org → API development tools (one-time, tied to your Telegram account)."/>
+        </StackPanel>
+
+        <RadioButton GroupName="bigfile" Content="Leave big files on the PC (report the path only)"
+                     IsChecked="{Binding LargeModeOff}" Margin="0,2,0,0"/>
 
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0" VerticalAlignment="Center">
           <ui:Button Content="Apply" Appearance="Primary" MinWidth="120" Command="{Binding ApplyTelegramCommand}"/>
