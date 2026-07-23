@@ -18,7 +18,8 @@ namespace Decrypta.Core.TelegramBot;
 /// </summary>
 public sealed class TelegramBotService : IDisposable
 {
-    private const long TelegramUploadLimit = 49L * 1024 * 1024; // bots can upload ~50 MB via the cloud API
+    private const long CloudUploadLimit = 49L * 1024 * 1024;        // Telegram cloud Bot API: 50 MB cap
+    private const long LocalServerUploadLimit = 1990L * 1024 * 1024; // self-hosted Bot API server: ~2 GB
 
     private readonly object _lock = new();
     private readonly HashSet<long> _allowed = [];
@@ -27,6 +28,7 @@ public sealed class TelegramBotService : IDisposable
     private TelegramBotClient? _bot;
     private CancellationTokenSource? _cts;
     private RunningJob? _activeJob;
+    private long _uploadLimit = CloudUploadLimit;
 
     public bool Running { get; private set; }
     public string? BotUsername { get; private set; }
@@ -57,10 +59,22 @@ public sealed class TelegramBotService : IDisposable
         }
         PairCode = GeneratePairCode();
 
+        string baseUrl = settings.TelegramApiBaseUrl.Trim();
         var cts = new CancellationTokenSource();
         try
         {
-            var bot = new TelegramBotClient(token, cancellationToken: cts.Token);
+            TelegramBotClient bot;
+            if (baseUrl.Length > 0)
+            {
+                bot = new TelegramBotClient(new TelegramBotClientOptions(token, baseUrl), cancellationToken: cts.Token);
+                _uploadLimit = LocalServerUploadLimit;
+            }
+            else
+            {
+                bot = new TelegramBotClient(token, cancellationToken: cts.Token);
+                _uploadLimit = CloudUploadLimit;
+            }
+
             var me = await bot.GetMe().ConfigureAwait(false);
             BotUsername = me.Username;
             bot.OnMessage += OnMessage;
@@ -69,7 +83,8 @@ public sealed class TelegramBotService : IDisposable
             _bot = bot;
             _cts = cts;
             Running = true;
-            Log?.Invoke($"Telegram: @{BotUsername} online. Pair from your phone with:  /pair {PairCode}");
+            string via = baseUrl.Length > 0 ? $" via local API ({baseUrl}, ~2 GB uploads)" : " (cloud API, 50 MB upload cap)";
+            Log?.Invoke($"Telegram: @{BotUsername} online{via}. Pair from your phone with:  /pair {PairCode}");
             return true;
         }
         catch (Exception ex)
@@ -334,10 +349,11 @@ public sealed class TelegramBotService : IDisposable
         {
             return;
         }
-        if (result.Bytes > 0 && result.Bytes <= TelegramUploadLimit)
+        if (result.Bytes > 0 && result.Bytes <= _uploadLimit)
         {
             try
             {
+                await Send(chatId, $"Uploading {result.FileName} ({HumanSize(result.Bytes)})…");
                 await using var fs = File.OpenRead(result.OutputPath);
                 await _bot.SendDocument(chatId, InputFile.FromStream(fs, result.FileName ?? "app.ipa"),
                     caption: $"{result.FileName} ({HumanSize(result.Bytes)})");
@@ -348,8 +364,12 @@ public sealed class TelegramBotService : IDisposable
                 Log?.Invoke($"Telegram: upload failed — {ex.Message}");
             }
         }
+
+        string hint = _uploadLimit <= CloudUploadLimit
+            ? "\n\nTip: to send big IPAs over Telegram, run a local Bot API server and set its URL in Decrypta's Telegram tab (raises the limit to ~2 GB)."
+            : "";
         await Send(chatId,
-            $"Saved on the PC:\n{result.OutputPath}\n\n({HumanSize(result.Bytes)} — too large to send over Telegram; grab it from the PC or your Library.)");
+            $"✅ {result.FileName} ({HumanSize(result.Bytes)})\nSaved on the PC:\n{result.OutputPath}\n\n(Over this bot's {HumanSize(_uploadLimit)} upload limit, so not sent here.){hint}");
     }
 
     private async Task HandleCancel(long chatId)

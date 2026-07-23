@@ -58,6 +58,7 @@ public sealed class MainViewModel : ObservableObject
 
         _telegramEnabled = _settings.TelegramEnabled;
         _telegramBotToken = _settings.TelegramBotToken;
+        _telegramApiBaseUrl = _settings.TelegramApiBaseUrl;
         ApplyTelegramCommand = new RelayCommand(() => _ = ApplyTelegramAsync());
         CopyPairCodeCommand = new RelayCommand(CopyPairCode);
         _telegram.Log += OnTelegramLog;
@@ -288,6 +289,9 @@ public sealed class MainViewModel : ObservableObject
     private string _telegramBotToken = "";
     public string TelegramBotToken { get => _telegramBotToken; set => SetProperty(ref _telegramBotToken, value); }
 
+    private string _telegramApiBaseUrl = "";
+    public string TelegramApiBaseUrl { get => _telegramApiBaseUrl; set => SetProperty(ref _telegramApiBaseUrl, value); }
+
     private bool _botRunning;
     public bool BotRunning { get => _botRunning; set => SetProperty(ref _botRunning, value); }
 
@@ -316,6 +320,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _settings.TelegramEnabled = TelegramEnabled;
         _settings.TelegramBotToken = TelegramBotToken.Trim();
+        _settings.TelegramApiBaseUrl = TelegramApiBaseUrl.Trim();
         _settings.Save();
 
         if (TelegramEnabled && !string.IsNullOrWhiteSpace(_settings.TelegramBotToken))

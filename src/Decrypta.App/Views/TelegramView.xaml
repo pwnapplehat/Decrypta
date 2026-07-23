@@ -27,6 +27,12 @@
         <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
                    Text="Create a bot once: open @BotFather in Telegram → send /newbot → follow the prompts → copy the token here. The token is stored locally on this PC only."/>
 
+        <TextBlock Text="Local Bot API server URL (optional)" Style="{StaticResource Text.FieldLabel}" Margin="0,14,0,4"/>
+        <ui:TextBox PlaceholderText="e.g. http://localhost:8081 — leave empty to use Telegram's cloud"
+                    Text="{Binding TelegramApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="Telegram's cloud caps bot file uploads at 50 MB, so larger IPAs are left on the PC. Point the bot at a self-hosted Bot API server (telegram-bot-api) to raise that to ~2 GB and have big IPAs sent to your chat."/>
+
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0" VerticalAlignment="Center">
           <ui:Button Content="Apply" Appearance="Primary" MinWidth="120" Command="{Binding ApplyTelegramCommand}"/>
           <Ellipse Width="9" Height="9" Margin="18,0,7,0" VerticalAlignment="Center"

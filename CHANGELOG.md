@@ -4,6 +4,16 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-07-23
+
+### Added
+- **Send IPAs larger than 50 MB over the Telegram bot via a local Bot API server.** Telegram's
+  cloud Bot API caps bot file uploads at 50 MB (verified empirically: a 49 MB body is accepted,
+  51 MB+ returns HTTP 413), so bigger IPAs were left on the PC. You can now set a **local Bot API
+  server URL** (e.g. `http://localhost:8081`) in the Telegram tab; when set, Decrypta points the
+  bot at it and raises the upload limit to ~2 GB. The over-limit message now names the current
+  limit and points to this option.
+
 ## [1.1.0] - 2026-07-23
 
 ### Added
