@@ -125,6 +125,11 @@ you're away from the machine.
 
 Only chats that complete pairing can control the bot; the token and allow-list are stored locally.
 
+The bot runs inside the app, so keep Decrypta open with the device connected. To make that easy:
+while the bot is enabled, **closing the window minimizes to the system tray** (it keeps running;
+right-click the tray icon to quit), and there's an optional **Start with Windows** toggle. With the
+bot off, closing quits normally.
+
 **Big apps (over Telegram's 50 MB bot upload cap).** Pick how the bot delivers them in the Telegram
 tab — helper tools download automatically and ports are auto-selected, so there's nothing to install:
 

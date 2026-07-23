@@ -60,6 +60,13 @@
         <RadioButton GroupName="bigfile" Content="Leave big files on the PC (report the path only)"
                      IsChecked="{Binding LargeModeOff}" Margin="0,2,0,0"/>
 
+        <Separator Margin="0,16,0,12" Background="{StaticResource Brush.Inset}"/>
+        <TextBlock Text="Running for the bot" Style="{StaticResource Text.FieldLabel}"/>
+        <TextBlock Style="{StaticResource Text.Caption}" Margin="0,4,0,8" TextWrapping="Wrap"
+                   Text="While the bot is enabled, closing the window keeps Decrypta running in the system tray so the bot stays reachable (right-click the tray icon to quit). With the bot off, closing quits normally."/>
+        <ui:ToggleSwitch Content="Start Decrypta with Windows (minimized, for the bot)"
+                         IsChecked="{Binding LaunchOnStartup}"/>
+
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0" VerticalAlignment="Center">
           <ui:Button Content="Apply" Appearance="Primary" MinWidth="120" Command="{Binding ApplyTelegramCommand}"/>
           <Ellipse Width="9" Height="9" Margin="18,0,7,0" VerticalAlignment="Center"

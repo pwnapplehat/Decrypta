@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- WinForms is enabled only for the system-tray NotifyIcon (used when the Telegram bot is on). -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Decrypta.App</RootNamespace>
     <AssemblyName>Decrypta</AssemblyName>
     <ApplicationIcon Condition="Exists('..\..\assets\icon.ico')">..\..\assets\icon.ico</ApplicationIcon>
@@ -13,6 +15,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Decrypta.Core\Decrypta.Core.csproj" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <!-- WinForms is on only for the tray NotifyIcon (referenced fully-qualified). Drop its implicit
+       global usings so System.Windows.Forms types don't clash with WPF's System.Windows types. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('..\..\assets\icon.png')">

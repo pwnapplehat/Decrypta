@@ -22,6 +22,8 @@ public partial class MainWindow : FluentWindow
     ];
 
     private readonly MainViewModel _viewModel = new();
+    private System.Windows.Forms.NotifyIcon? _tray;
+    private bool _reallyQuit;
 
     public MainWindow()
     {
@@ -29,6 +31,10 @@ public partial class MainWindow : FluentWindow
         DataContext = _viewModel;
 
         FitToWorkArea();
+        if (App.StartMinimized)
+        {
+            WindowState = WindowState.Minimized;
+        }
         RootNavigation.SetPageProviderService(new PageService(_viewModel));
         _viewModel.NavigateRequested += NavigateToTab;
 
@@ -101,9 +107,64 @@ public partial class MainWindow : FluentWindow
         }
     }
 
+    // While the Telegram bot is running, closing the window keeps Decrypta alive in the tray
+    // (so the bot stays reachable). Without the bot running, closing quits normally.
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_reallyQuit && _viewModel.BotRunning)
+        {
+            e.Cancel = true;
+            Hide();
+            EnsureTray();
+            _tray!.ShowBalloonTip(3000, "Decrypta",
+                "Still running for the Telegram bot. Right-click the tray icon to quit.",
+                System.Windows.Forms.ToolTipIcon.Info);
+            return;
+        }
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _viewModel.ShutdownTelegram();
+        _tray?.Dispose();
+        _tray = null;
         base.OnClosed(e);
+    }
+
+    private void EnsureTray()
+    {
+        if (_tray is not null)
+        {
+            return;
+        }
+        _tray = new System.Windows.Forms.NotifyIcon
+        {
+            Text = "Decrypta — Telegram bot running",
+            Visible = true,
+        };
+        try
+        {
+            if (Environment.ProcessPath is { } exe)
+            {
+                _tray.Icon = System.Drawing.Icon.ExtractAssociatedIcon(exe);
+            }
+        }
+        catch (Exception)
+        {
+            // no icon available; the tray entry still works
+        }
+        _tray.DoubleClick += (_, _) => RestoreFromTray();
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+        menu.Items.Add("Open Decrypta", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Quit Decrypta", null, (_, _) => { _reallyQuit = true; Close(); });
+        _tray.ContextMenuStrip = menu;
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
     }
 }

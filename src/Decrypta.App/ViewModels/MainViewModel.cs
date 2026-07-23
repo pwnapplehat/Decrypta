@@ -65,6 +65,7 @@ public sealed class MainViewModel : ObservableObject
         _largeModeLink = mode != "off" && mode != "server";
         _telegramApiId = _settings.TelegramApiId > 0 ? _settings.TelegramApiId.ToString() : "";
         _telegramApiHash = _settings.TelegramApiHash;
+        _launchOnStartup = Services.StartupManager.IsEnabled();
         ApplyTelegramCommand = new RelayCommand(() => _ = ApplyTelegramAsync());
         CopyPairCodeCommand = new RelayCommand(CopyPairCode);
         _telegram.Log += OnTelegramLog;
@@ -324,6 +325,9 @@ public sealed class MainViewModel : ObservableObject
     private string _telegramApiHash = "";
     public string TelegramApiHash { get => _telegramApiHash; set => SetProperty(ref _telegramApiHash, value); }
 
+    private bool _launchOnStartup;
+    public bool LaunchOnStartup { get => _launchOnStartup; set => SetProperty(ref _launchOnStartup, value); }
+
     private bool _botRunning;
     public bool BotRunning { get => _botRunning; set => SetProperty(ref _botRunning, value); }
 
@@ -357,6 +361,7 @@ public sealed class MainViewModel : ObservableObject
         _settings.TelegramApiId = int.TryParse(TelegramApiId.Trim(), out int apiId) ? apiId : 0;
         _settings.TelegramApiHash = TelegramApiHash.Trim();
         _settings.Save();
+        Services.StartupManager.Set(LaunchOnStartup);
 
         if (TelegramEnabled && !string.IsNullOrWhiteSpace(_settings.TelegramBotToken))
         {

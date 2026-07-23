@@ -9,8 +9,14 @@ public partial class App : Application
     private Mutex? _singleInstance;
     private bool _ownsMutex;
 
+    /// <summary>Set when launched with --minimized (e.g. the Windows-startup entry): boot quietly
+    /// for the Telegram bot instead of popping the window up.</summary>
+    public static bool StartMinimized { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        StartMinimized = e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
+
         _singleInstance = new Mutex(initiallyOwned: true, "Decrypta.App.SingleInstance", out bool isNew);
         _ownsMutex = isNew;
         if (!isNew)

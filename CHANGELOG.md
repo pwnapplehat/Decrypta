@@ -4,6 +4,17 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-23
+
+### Added
+- **Stay running for the bot — smartly.** When the Telegram bot is enabled, closing the window now
+  **minimizes Decrypta to the system tray** (double-click the tray icon to reopen, right-click →
+  Quit) so the bot stays reachable from your phone. When the bot is **off**, closing quits normally
+  — no always-on background app. Verified both ways.
+- **Optional "Start Decrypta with Windows"** toggle in the Telegram tab: launches Decrypta minimized
+  at sign-in (per-user, no admin) so the bot is ready without opening it manually. It still needs
+  your PC on with the device connected — decryption physically happens on the device.
+
 ## [1.2.1] - 2026-07-23
 
 ### Changed
