@@ -5,8 +5,8 @@
   <Grid Margin="28,20,28,20">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <StackPanel Grid.Row="0">
@@ -15,7 +15,8 @@
                  Text="Enter a bundle id, App Store id, App Store URL, or a local .ipa. Decrypta downloads it and decrypts it on your connected device into a sideload-ready IPA."/>
     </StackPanel>
 
-    <ui:Card Grid.Row="1" Margin="0,18,0,0">
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0" Margin="0,0,-10,0">
+    <ui:Card Margin="0,18,0,0">
       <StackPanel>
         <TextBlock Text="App" Style="{StaticResource Text.FieldLabel}"/>
         <ui:TextBox PlaceholderText="com.burbn.instagram   ·   389801252   ·   https://apps.apple.com/…/id389801252"
@@ -112,8 +113,9 @@
         </StackPanel>
       </StackPanel>
     </ui:Card>
+    </ScrollViewer>
 
-    <ui:Card Grid.Row="2" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="2">
+    <ui:Card Grid.Row="2" Margin="0,14,0,0" Height="200" VerticalContentAlignment="Stretch" Padding="2">
       <TextBox x:Name="Log" Style="{StaticResource Console}" Background="Transparent" BorderThickness="0"
                Text="{Binding DecryptLogText, Mode=OneWay}" TextChanged="OnLogChanged"/>
     </ui:Card>

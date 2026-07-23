@@ -15,6 +15,10 @@ All notable changes to Decrypta are documented here. The format is based on
   at sign-in (per-user, no admin) so the bot is ready without opening it manually. It still needs
   your PC on with the device connected — decryption physically happens on the device.
 
+### Fixed
+- The Telegram and Decrypt tabs now **scroll** when their content is taller than the window instead
+  of clipping controls off the bottom — the form area scrolls while the log stays pinned below it.
+
 ## [1.2.1] - 2026-07-23
 
 ### Changed

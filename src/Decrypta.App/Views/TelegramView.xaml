@@ -5,9 +5,8 @@
   <Grid Margin="28,20,28,20">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <StackPanel Grid.Row="0">
@@ -16,8 +15,11 @@
                  Text="Control decryption from your phone. Keep Decrypta running with a device connected, then use the bot in Telegram — list versions, decrypt, and get the IPA, without touching Windows."/>
     </StackPanel>
 
+    <!-- Everything configurable scrolls, so nothing gets clipped on smaller windows. -->
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0" Margin="0,0,-10,0">
+    <StackPanel>
     <!-- Setup -->
-    <ui:Card Grid.Row="1" Margin="0,16,0,0">
+    <ui:Card Margin="0,16,0,0">
       <StackPanel>
         <ui:ToggleSwitch Content="Enable Telegram bot" IsChecked="{Binding TelegramEnabled}"/>
 
@@ -78,7 +80,7 @@
     </ui:Card>
 
     <!-- Pairing (shown once the bot is online) -->
-    <ui:Card Grid.Row="2" Margin="0,14,0,0"
+    <ui:Card Margin="0,14,0,0"
              Visibility="{Binding BotRunning, Converter={StaticResource BoolToVis}}">
       <StackPanel>
         <TextBlock Text="Pair your phone" Style="{StaticResource Text.FieldLabel}"/>
@@ -96,8 +98,11 @@
       </StackPanel>
     </ui:Card>
 
-    <!-- Activity log -->
-    <ui:Card Grid.Row="3" Margin="0,14,0,0" VerticalContentAlignment="Stretch" Padding="8">
+    </StackPanel>
+    </ScrollViewer>
+
+    <!-- Activity log — pinned at the bottom with its own scroll. -->
+    <ui:Card Grid.Row="2" Margin="0,14,0,0" Height="120" VerticalContentAlignment="Stretch" Padding="8">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <TextBlock Text="{Binding TelegramLogText}" FontFamily="Consolas" FontSize="12"
                    TextWrapping="Wrap" Padding="8"
