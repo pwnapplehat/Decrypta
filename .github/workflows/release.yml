@@ -48,10 +48,30 @@ jobs:
           "$h $($f.Name)" | Out-File -Encoding ascii release\SHA256SUMS.txt
           Get-Content release\SHA256SUMS.txt
 
+      - name: Release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          # Pull just this version's section out of CHANGELOG.md so the release page shows
+          # readable notes (not a bare "Full Changelog" diff link).
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $out = @(); $inSection = $false
+          foreach ($line in Get-Content CHANGELOG.md) {
+            if ($line -match '^##\s+\[') {
+              if ($line -match "\[$([regex]::Escape($ver))\]") { $inSection = $true; continue }
+              elseif ($inSection) { break }
+            }
+            if ($inSection) { $out += $line }
+          }
+          $notes = ($out -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "Decrypta $ver" }
+          $notes | Out-File -Encoding utf8 RELEASE_NOTES.md
+          Write-Output $notes
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/*.exe
             release/SHA256SUMS.txt
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: false
