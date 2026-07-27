@@ -100,10 +100,40 @@ public sealed class MainViewModel : ObservableObject
 
     // ---- decrypt tab ----
     private string _decryptTarget = "";
-    public string DecryptTarget { get => _decryptTarget; set => SetProperty(ref _decryptTarget, value); }
+    public string DecryptTarget
+    {
+        get => _decryptTarget;
+        set
+        {
+            if (SetProperty(ref _decryptTarget, value) &&
+                !string.Equals((value ?? "").Trim(), _versionsTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                // The loaded version list and any pinned version belong to ONE app. When the app
+                // changes, that pin is stale: leaving it set sends the previous app's version id
+                // with the new app's bundle id and silently decrypts the WRONG app (e.g. type
+                // com.cardify.tinder after picking an Instagram version -> you'd get Instagram).
+                // Discard the picker so the user re-loads versions for the new app.
+                ResetVersionPicker();
+            }
+        }
+    }
 
     private bool _sourceFromAppStore = true;
-    public bool SourceFromAppStore { get => _sourceFromAppStore; set => SetProperty(ref _sourceFromAppStore, value); }
+    public bool SourceFromAppStore
+    {
+        get => _sourceFromAppStore;
+        set
+        {
+            if (SetProperty(ref _sourceFromAppStore, value) && !value)
+            {
+                // "Use installed build" decrypts the on-device copy, so a pinned App Store version
+                // can't apply — clear it (mirrors the Telegram card) instead of letting the engine
+                // silently force the source back to the App Store.
+                SelectedVersion = null;
+                ExtVersionId = "";
+            }
+        }
+    }
 
     private bool _skipAppex;
     public bool SkipAppex { get => _skipAppex; set => SetProperty(ref _skipAppex, value); }
@@ -129,6 +159,10 @@ public sealed class MainViewModel : ObservableObject
     // The full ordered id list + app id for the currently loaded app, so "Load more" and the
     // exact-version search can page through without re-listing.
     private Decrypta.Core.DecryptaEngine.VersionList? _versionList;
+
+    // The (trimmed) target the loaded version list belongs to. If DecryptTarget changes away from
+    // this, the picker is invalidated so a version can't be applied to a different app's decrypt.
+    private string _versionsTarget = "";
 
     private Decrypta.Core.AppStore.AppVersion? _selectedVersion;
     public Decrypta.Core.AppStore.AppVersion? SelectedVersion
@@ -901,7 +935,15 @@ public sealed class MainViewModel : ObservableObject
                 return;
             }
 
+            if (!string.Equals(DecryptTarget.Trim(), target, StringComparison.OrdinalIgnoreCase))
+            {
+                // The user changed the app while this was loading — discard stale results so the
+                // picker always matches the app currently in the box.
+                return;
+            }
+
             _versionList = listed.List;
+            _versionsTarget = target;
             AvailableVersions.Clear();
             SelectedVersion = null;
 
@@ -1024,6 +1066,20 @@ public sealed class MainViewModel : ObservableObject
         {
             VersionsBusy = false;
         }
+    }
+
+    /// <summary>Discard the loaded version list, the selected/pinned version and any hand-typed
+    /// external version id. Called when the target app changes so a version chosen for a different
+    /// app can never be sent with the new app's id. The user re-runs "Load versions".</summary>
+    private void ResetVersionPicker()
+    {
+        _versionList = null;
+        _versionsTarget = "";
+        SelectedVersion = null;   // its setter clears a picker-pinned ExtVersionId
+        AvailableVersions.Clear();
+        ExtVersionId = "";         // also clear a hand-typed advanced id — it's app-specific
+        VersionSearch = "";
+        AfterVersionsChanged();    // refresh HasVersions / CanLoadMore / count text
     }
 
     private void AfterVersionsChanged()

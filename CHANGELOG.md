@@ -4,6 +4,18 @@ All notable changes to Decrypta are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-07-28
+
+### Fixed
+- **Changing the app after picking a specific version no longer decrypts the wrong app.** The
+  version picker pins the identifier of the build you choose. That pin — along with the loaded
+  version list and the "advanced: external version id" field — now **clears the moment you change
+  the App field**, so entering a new bundle id can never reuse a version you picked for a previous
+  app. Previously, picking (say) an Instagram build and then switching the App box to another app
+  could download that Instagram build instead of the app you typed. Selecting **"Use installed
+  build"** also clears any pinned version, and results from a version load are discarded if you edit
+  the App field while it's still loading.
+
 ## [1.3.0] - 2026-07-23
 
 ### Added
