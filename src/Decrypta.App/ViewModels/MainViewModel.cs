@@ -848,8 +848,10 @@ public sealed class MainViewModel : ObservableObject
             }
             else
             {
-                Status = $"decrypt failed (exit {result.ExitCode})";
-                ShowDecryptComplete(false, target, 0, null);
+                Status = string.IsNullOrWhiteSpace(result.Error)
+                    ? $"decrypt failed (exit {result.ExitCode})"
+                    : $"decrypt failed — {result.Error.Split('\n')[0]}";
+                ShowDecryptComplete(false, target, 0, null, result.Error);
             }
             await RefreshCacheSizeAsync();
         }

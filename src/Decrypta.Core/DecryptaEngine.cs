@@ -115,10 +115,12 @@ public sealed class DecryptaEngine
         string? ExternalVersionId = null,
         string? Storefront = null);
 
-    /// <summary>Outcome of a decrypt run. <see cref="OutputPath"/> is the final, tidily-named IPA.</summary>
-    public sealed record DecryptResult(int ExitCode, string? OutputPath, string? FileName, long Bytes)
+    /// <summary>Outcome of a decrypt run. <see cref="OutputPath"/> is the final, tidily-named IPA.
+    /// <see cref="Error"/> is set when the run failed (including when ipadecrypt exits 0 but wrote
+    /// nothing — e.g. appinst missing on the device).</summary>
+    public sealed record DecryptResult(int ExitCode, string? OutputPath, string? FileName, long Bytes, string? Error = null)
     {
-        public bool Ok => ExitCode == 0 && OutputPath is not null;
+        public bool Ok => ExitCode == 0 && OutputPath is not null && Error is null;
     }
 
     /// <summary>
@@ -187,7 +189,23 @@ public sealed class DecryptaEngine
         Directory.CreateDirectory(outputDir);
         var before = SnapshotIpas(outputDir);
 
-        var job = StartDecrypt(device, target, outputDir, flags, onOutput);
+        // Tee ipadecrypt's stream so we can surface its last [err] line if it exits without
+        // producing an IPA (upstream sometimes returns exit 0 after printing [err]).
+        string? lastErr = null;
+        void Tee(string chunk)
+        {
+            onOutput(chunk);
+            foreach (var line in chunk.Split('\n'))
+            {
+                string t = line.Trim();
+                if (t.Contains("[err]", StringComparison.OrdinalIgnoreCase))
+                {
+                    lastErr = t;
+                }
+            }
+        }
+
+        var job = StartDecrypt(device, target, outputDir, flags, Tee);
         onJob?.Invoke(job);
         await using var reg = ct.Register(() => { try { job.Cancel(); } catch (InvalidOperationException) { } });
         int rc = await job.Completion.ConfigureAwait(false);
@@ -195,36 +213,99 @@ public sealed class DecryptaEngine
         if (rc != 0)
         {
             CleanPartials();
-            return new DecryptResult(rc, null, null, 0);
+            return new DecryptResult(rc, null, null, 0, lastErr ?? $"decrypt exited with code {rc}");
         }
 
         var produced = ClaimNewIpa(outputDir, before);
-        return new DecryptResult(0, produced?.FullName, produced?.Name, produced?.Length ?? 0);
+        if (produced is null)
+        {
+            // CRITICAL: never treat "exit 0 + an older IPA already in the folder" as success.
+            // That was claiming e.g. com.burbn.instagram_439.0.0.ipa after a failed 440 run.
+            CleanPartials();
+            string msg = ExplainMissingOutput(lastErr);
+            onOutput($"[fail] {msg}\n");
+            return new DecryptResult(1, null, null, 0, msg);
+        }
+
+        return new DecryptResult(0, produced.FullName, produced.Name, produced.Length);
     }
 
-    private static List<string> SnapshotIpas(string dir) =>
-        Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*.ipa").ToList() : [];
-
-    /// <summary>Find the IPA ipadecrypt just wrote (new since <paramref name="before"/>) and rename
-    /// <c>.decrypted.ipa</c> → <c>.ipa</c> so the Library shows a clean <bundleId>_<version> name.</summary>
-    private static FileInfo? ClaimNewIpa(string dir, IReadOnlyList<string> before)
+    /// <summary>Friendly failure when ipadecrypt exited 0 but wrote no decrypted IPA.</summary>
+    private static string ExplainMissingOutput(string? lastErr)
     {
-        var seen = new HashSet<string>(before, StringComparer.OrdinalIgnoreCase);
-        var produced = Directory.EnumerateFiles(dir, "*.ipa")
-            .Where(f => !seen.Contains(f))
-            .Select(f => new FileInfo(f))
-            .OrderByDescending(fi => fi.LastWriteTimeUtc)
-            .FirstOrDefault()
-            // fall back to newest overall if the run overwrote a same-named file
-            ?? Directory.EnumerateFiles(dir, "*.ipa")
-                .Select(f => new FileInfo(f))
-                .OrderByDescending(fi => fi.LastWriteTimeUtc)
-                .FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(lastErr))
+        {
+            // Strip a leading "[err] " so the dialog isn't noisy.
+            string bare = lastErr.Trim();
+            if (bare.StartsWith("[err]", StringComparison.OrdinalIgnoreCase))
+            {
+                bare = bare["[err]".Length..].TrimStart(' ', '-', ':');
+            }
+            if (bare.Contains("appinst", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{bare}\n\nOpen the Sign in tab and run Sign in (bootstrap) so appinst is installed on the device, then try again.";
+            }
+            return bare;
+        }
+        return "No decrypted IPA was produced. Check the log above — if you see 'appinst not found', open Sign in and run bootstrap on the device.";
+    }
 
-        if (produced is null)
+    /// <summary>Path + size + mtime fingerprint of every *.ipa in the output folder before a run.</summary>
+    public sealed record IpaSnapshot(string Path, long Length, DateTime LastWriteUtc);
+
+    public static List<IpaSnapshot> SnapshotIpas(string dir) =>
+        !Directory.Exists(dir)
+            ? []
+            : Directory.EnumerateFiles(dir, "*.ipa")
+                .Select(f =>
+                {
+                    var fi = new FileInfo(f);
+                    return new IpaSnapshot(fi.FullName, fi.Length, fi.LastWriteTimeUtc);
+                })
+                .ToList();
+
+    /// <summary>
+    /// Claim the IPA this decrypt run actually wrote. Only files that are <em>new or rewritten</em>
+    /// since <paramref name="before"/> count — never an untouched older IPA already in the folder.
+    /// Prefers <c>*.decrypted.ipa</c> (ipadecrypt's real output), then tidies the name to
+    /// <c>&lt;bundleId&gt;_&lt;version&gt;.ipa</c>.
+    /// </summary>
+    public static FileInfo? ClaimNewIpa(string dir, IReadOnlyList<IpaSnapshot> before)
+    {
+        if (!Directory.Exists(dir))
         {
             return null;
         }
+
+        var beforeMap = new Dictionary<string, IpaSnapshot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in before)
+        {
+            beforeMap[s.Path] = s;
+        }
+
+        var changed = new List<FileInfo>();
+        foreach (var path in Directory.EnumerateFiles(dir, "*.ipa"))
+        {
+            var fi = new FileInfo(path);
+            if (!beforeMap.TryGetValue(fi.FullName, out var prev)
+                || prev.Length != fi.Length
+                || prev.LastWriteUtc != fi.LastWriteTimeUtc)
+            {
+                changed.Add(fi);
+            }
+        }
+
+        if (changed.Count == 0)
+        {
+            return null;
+        }
+
+        // Prefer ipadecrypt's authentic output name over any other new *.ipa.
+        var produced = changed
+            .Where(fi => fi.Name.EndsWith(".decrypted.ipa", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .FirstOrDefault()
+            ?? changed.OrderByDescending(fi => fi.LastWriteTimeUtc).First();
 
         string tidy = TidyDecryptedName(produced.Name);
         if (!string.Equals(tidy, produced.Name, StringComparison.Ordinal))

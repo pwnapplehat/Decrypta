@@ -104,6 +104,10 @@ static async Task<int> DecryptCmd(string[] args)
     {
         Console.WriteLine($"\n[saved] {result.OutputPath}");
     }
+    else if (!string.IsNullOrWhiteSpace(result.Error))
+    {
+        Console.Error.WriteLine($"\n[fail] {result.Error}");
+    }
     Console.WriteLine($"[exit {result.ExitCode}]");
     return result.ExitCode;
 }

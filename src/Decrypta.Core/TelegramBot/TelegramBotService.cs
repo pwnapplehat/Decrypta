@@ -475,7 +475,10 @@ public sealed class TelegramBotService : IDisposable
             }
             else
             {
-                await TryEdit(chatId, statusMsgId, $"❌ Decrypt failed (exit {result.ExitCode}). Check the PC log for details.");
+                string detail = string.IsNullOrWhiteSpace(result.Error)
+                    ? $"exit {result.ExitCode}"
+                    : result.Error.Split('\n')[0];
+                await TryEdit(chatId, statusMsgId, $"❌ Decrypt failed — {detail}");
             }
         }
         finally

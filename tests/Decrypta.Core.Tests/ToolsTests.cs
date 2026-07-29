@@ -226,6 +226,118 @@ public class OutputNamingTests
         => Assert.Equal(input, DecryptaEngine.TidyDecryptedName(input));
 }
 
+/// <summary>
+/// ClaimNewIpa must never treat an older IPA already in the folder as this run's output —
+/// that caused "Decryption complete" for Instagram 439 after a failed 440 run with no appinst.
+/// </summary>
+public class ClaimNewIpaTests
+{
+    private static string TempDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "decrypta-claim-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        return d;
+    }
+
+    [Fact]
+    public void ClaimNewIpa_returns_null_when_only_preexisting_ipas_exist()
+    {
+        var dir = TempDir();
+        try
+        {
+            string old = Path.Combine(dir, "com.burbn.instagram_439.0.0.ipa");
+            File.WriteAllBytes(old, new byte[64]);
+            var before = DecryptaEngine.SnapshotIpas(dir);
+
+            // Simulate a failed decrypt: nothing new written.
+            Assert.Null(DecryptaEngine.ClaimNewIpa(dir, before));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void ClaimNewIpa_claims_new_decrypted_ipa_and_tidies_name()
+    {
+        var dir = TempDir();
+        try
+        {
+            File.WriteAllBytes(Path.Combine(dir, "com.burbn.instagram_439.0.0.ipa"), new byte[64]);
+            var before = DecryptaEngine.SnapshotIpas(dir);
+
+            string fresh = Path.Combine(dir, "com.burbn.instagram_440.0.0.decrypted.ipa");
+            File.WriteAllBytes(fresh, new byte[128]);
+
+            var claimed = DecryptaEngine.ClaimNewIpa(dir, before);
+            Assert.NotNull(claimed);
+            Assert.Equal("com.burbn.instagram_440.0.0.ipa", claimed!.Name);
+            Assert.False(File.Exists(fresh)); // renamed away
+            Assert.True(File.Exists(Path.Combine(dir, "com.burbn.instagram_440.0.0.ipa")));
+            // Old 439 must still be untouched.
+            Assert.True(File.Exists(Path.Combine(dir, "com.burbn.instagram_439.0.0.ipa")));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void ClaimNewIpa_prefers_decrypted_over_other_new_ipa()
+    {
+        var dir = TempDir();
+        try
+        {
+            var before = DecryptaEngine.SnapshotIpas(dir);
+            File.WriteAllBytes(Path.Combine(dir, "noise.ipa"), new byte[16]);
+            File.WriteAllBytes(Path.Combine(dir, "com.app_1.0.decrypted.ipa"), new byte[32]);
+
+            var claimed = DecryptaEngine.ClaimNewIpa(dir, before);
+            Assert.NotNull(claimed);
+            Assert.Equal("com.app_1.0.ipa", claimed!.Name);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void ClaimNewIpa_detects_rewritten_same_path()
+    {
+        var dir = TempDir();
+        try
+        {
+            string path = Path.Combine(dir, "com.app_1.0.decrypted.ipa");
+            File.WriteAllBytes(path, new byte[8]);
+            var before = DecryptaEngine.SnapshotIpas(dir);
+
+            // Overwrite in place (same path, new content + mtime).
+            Thread.Sleep(20); // ensure mtime ticks on coarse filesystems
+            File.WriteAllBytes(path, new byte[64]);
+
+            var claimed = DecryptaEngine.ClaimNewIpa(dir, before);
+            Assert.NotNull(claimed);
+            Assert.Equal("com.app_1.0.ipa", claimed!.Name);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void DecryptResult_Ok_requires_output_path()
+    {
+        Assert.False(new DecryptaEngine.DecryptResult(0, null, null, 0).Ok);
+        Assert.False(new DecryptaEngine.DecryptResult(0, null, null, 0, "appinst missing").Ok);
+        Assert.False(new DecryptaEngine.DecryptResult(1, @"C:\x.ipa", "x.ipa", 1).Ok);
+        Assert.True(new DecryptaEngine.DecryptResult(0, @"C:\x.ipa", "x.ipa", 1).Ok);
+    }
+}
+
 public class AccountServiceTests
 {
     [Fact]
